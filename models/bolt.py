@@ -1,0 +1,50 @@
+from .BolT.model import Model
+import copy
+
+def BolT(node_sz):
+    
+    hyperParams = {
+
+        "weightDecay" : 0,
+
+        "lr" : 2e-4,
+        "minLr" : 2e-5,
+        "maxLr" : 4e-4,
+
+        # FOR BOLT
+        "nOfLayers" : 4,
+        "dim" : node_sz,
+
+        "numHeads" : 36,
+        "headDim" : 20,
+
+        "windowSize" : 20,
+        "shiftCoeff" : 2.0/5.0,            
+        "fringeCoeff" : 2, # fringeSize = fringeCoeff * (windowSize) * 2 * (1-shiftCoeff)
+        "focalRule" : "expand",
+
+        "mlpRatio" : 1.0,
+        "attentionBias" : True,
+        "drop" : 0.1,
+        "attnDrop" : 0.1,
+        "lambdaCons" : 1,
+
+        # extra for ablation study
+        "pooling" : "cls", # ["cls", "gmp"]         
+            
+
+    }
+    hyperParams = Option(hyperParams)
+
+
+class Option(object):
+      
+    def __init__(self, my_dict):
+
+        self.dict = my_dict
+
+        for key in my_dict:
+            setattr(self, key, my_dict[key])
+
+    def copy(self):
+        return Option(copy.deepcopy(self.dict))
