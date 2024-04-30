@@ -56,7 +56,7 @@ class TransPoolingEncoder(nn.Module):
 
 class BrainNetworkTransformer(BaseModel):
     
-    def __init__(self, node_sz, out_channel, pos_encoding=None, pos_embed_dim=360, hidden_size=1024):
+    def __init__(self, node_sz, out_channel, pos_encoding=None, pos_embed_dim=360, hidden_size=1024, **kargs):
 
         super().__init__()
         hidden_size = hidden_size
@@ -89,7 +89,7 @@ class BrainNetworkTransformer(BaseModel):
                                     project_assignment=True))
 
         self.dim_reduction = nn.Sequential(
-            nn.Linear(forward_dim, 8),
+            nn.Linear(forward_dim, out_channel),
             nn.LeakyReLU()
         )
 
@@ -116,7 +116,7 @@ class BrainNetworkTransformer(BaseModel):
             node_feature, assignment = atten(node_feature)
             assignments.append(assignment)
 
-        # node_feature = self.dim_reduction(node_feature)
+        node_feature = self.dim_reduction(node_feature)
         # node_feature = node_feature.reshape((bz, -1))
 
         # out = self.fc(node_feature)
@@ -125,7 +125,7 @@ class BrainNetworkTransformer(BaseModel):
         #     return out, loss
         # else:
         #     return out
-        return node_feature.view(batch.batch.max()+1 * len(torch.where(batch.batch==0)[0]), node_feature.shape[1])
+        return node_feature.view(node_feature.shape[0] * node_feature.shape[1], node_feature.shape[-1])
 
     def get_attention_weights(self):
         return [atten.get_attention_weights() for atten in self.attention_list]

@@ -32,3 +32,12 @@
  * SAGE
  * SGC
 
+### Results
+
+|   BNT |   ADNI    
+Mean Accuracy: 0.8355555555555554, Std Accuracy: 0.07470104098320007
+Mean F1 Score: 0.7911541964509106, Std F1 Score: 0.07997008054784756
+Mean prec Score: 0.789997362034399, Std prec Score: 0.10653295623335432
+Mean rec Score: 0.8355555555555556, Std rec Score: 0.0747010502843183
+
+|   NeuroDetour |   ADNI

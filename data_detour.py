@@ -12,17 +12,24 @@ class NeuroDetour:
             'DE': k-1,
             'ID': 1,
         }
+        self.node_list = [i for i in range(node_num)]
 
-    def __call__(self, edge_index1, edge_index2, features):
+
+    def __call__(self, data):
+        edge_index1, edge_index2, features = data.edge_index_fc, data.edge_index_sc, data.x
         N = features.shape[0]
         PE_K = N
-        G1 = nx.from_edgelist(edge_index1.T.tolist())
-        G2 = nx.from_edgelist(edge_index2.T.tolist())
+        G1 = nx.Graph()
+        G1.add_nodes_from(self.node_list)
+        G1.add_edges_from(edge_index1.T.tolist())
+        G2 = nx.Graph()
+        G2.add_nodes_from(self.node_list)
+        G2.add_edges_from(edge_index2.T.tolist())
         de_list = []
         for j in range(edge_index1.shape[1]):
             de_list.append(get_de(G2, edge_index1[0, j].item(), edge_index1[1, j].item(), self.k))
         dee = torch.FloatTensor(de_list)#[:, None]
-        lap = torch.from_numpy(nx.laplacian_matrix(G1).toarray())
+        lap = torch.from_numpy(nx.laplacian_matrix(G1).toarray()).float()
         L, V = torch.linalg.eig(lap)
         pe = V[:, :PE_K].real
         xlist, pad_mask = segment_node_with_neighbor(edge_index1, node_attrs=[features, pe], edge_attrs=[dee])
@@ -75,7 +82,7 @@ def segment_node_with_neighbor(edge_index, node_attrs=[], edge_attrs=[], pad_val
     return seq, seq_mask # [(N*S, C)]
 
 def get_de(G, ni, nj, k):
-    de = [0 for _ in range(k-1)]
+    de = [0 for _ in range(k)]
     for path in nx.all_simple_paths(G, source=ni, target=nj, cutoff=k):
         if len(path) < 2: continue
         de[len(path)-2] += 1 

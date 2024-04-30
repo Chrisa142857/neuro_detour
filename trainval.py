@@ -3,7 +3,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from models import brain_net_transformer, neuro_detour
 from models.classifier import Classifier
 from torch_geometric.nn import GCNConv, GATConv, SAGEConv, SGConv
-from tqdm import trange
+from tqdm import trange, tqdm
 import torch.optim as optim
 import torch.nn as nn
 import torch
@@ -19,13 +19,18 @@ CLASSIFIER_BANK = {
     'mlp': nn.Linear,
     'gcn': GCNConv,
     'gat': GATConv,
-    # 'gin': GINConv,
     'sage': SAGEConv,
     'sgc': SGConv
 }
 ATLAS_ROI_N = {
     'AAL_116': 116,
-    'Gordon_333': 333
+    'Gordon_333': 333,
+    'D_160': 160
+}
+DATA_CLASS_N = {
+    'hcpa': 4,
+    'adni': 2,
+    'oasis': 2,
 }
 
 def main():
@@ -50,6 +55,7 @@ def main():
     print(args)
     device = args.device
     hiddim = args.hiddim
+    nclass = DATA_CLASS_N[args.dataname]
     dataset = None
     # Initialize lists to store evaluation metrics
     accuracies = []
@@ -59,14 +65,16 @@ def main():
     input_dim = ATLAS_ROI_N[args.atlas]
     if args.models != 'neurodetour':
         transform = None
+        dek = 0
     else:
         transform = NeuroDetour(k=4, node_num=input_dim)
+        dek = transform.k
     for i in range(5):
         train_loader, val_loader, dataset = dataloader_generator(batch_size=args.batch_size, nfold=i, dataset=dataset, 
                                                                  node_attr=args.node_attr, adj_type=args.adj_type, transform=transform, dname=args.dataname,
                                                                  fc_winsize=args.bold_winsize, atlas_name=args.atlas)
-        model = MODEL_BANK[args.models](input_dim, out_channel=hiddim).to(device)
-        classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=4).to(device)
+        model = MODEL_BANK[args.models](node_sz=input_dim, out_channel=hiddim, in_channel=input_dim, dek=dek).to(device)
+        classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=nclass, node_sz=input_dim).to(device)
         optimizer = optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=args.lr, weight_decay=args.decay)
         # print(optimizer)
         best_f1 = 0
@@ -116,7 +124,7 @@ def train(model, classifier, device, loader, optimizer):
     for step, batch in enumerate(loader):
         batch = batch.to(device)
         feat = model(batch)
-        y = classifier(feat, batch.edge_index)
+        y = classifier(feat, batch.edge_index, batch.batch)
         loss = loss_fn(y, batch.y)
         optimizer.zero_grad()
         loss.backward()
@@ -135,7 +143,7 @@ def eval(model, classifier, device, loader):
 
         with torch.no_grad():
             feat = model(batch)
-            pred = classifier(feat, batch.edge_index)
+            pred = classifier(feat, batch.edge_index, batch.batch)
 
         y_true.append(batch.y)
         y_scores.append(pred.detach().cpu())

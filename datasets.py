@@ -1,7 +1,7 @@
 import os, torch
 from scipy.io import loadmat
 from torch.utils.data import Dataset
-
+from pathlib import Path
 from sklearn.model_selection import KFold
 from torch_geometric.loader import DataLoader
 import pandas as pd
@@ -15,7 +15,7 @@ from torch_geometric.utils import remove_self_loops, add_self_loops
 from torch.nn.utils.rnn import pad_sequence
 
 
-ATLAS_FACTORY = ['AAL_116', 'Aicha_384', 'Gordon_333', 'Brainnetome_264', 'Shaefer_100', 'Shaefer_200', 'Shaefer_400']
+ATLAS_FACTORY = ['AAL_116', 'Aicha_384', 'Gordon_333', 'Brainnetome_264', 'Shaefer_100', 'Shaefer_200', 'Shaefer_400', 'D_160']
 BOLD_FORMAT = ['.csv', '.csv', '.tsv', '.csv', '.tsv', '.tsv', '.tsv']
 DATAROOT = {
     'adni': '/ram/USERS/ziquanw/detour_hcp/data',
@@ -30,6 +30,10 @@ DATANAME = {
     'ukb': 'UKB-SC-FC'
 }
 
+LABEL_REMAP = {
+    'adni': {'CN': 'CN', 'SMC': 'CN', 'EMCI': 'CN', 'LMCI': 'AD', 'AD': 'AD'},
+    'oasis': {'CN': 'CN', 'AD': 'AD'},
+}
 
 def dataloader_generator(batch_size=4, num_workers=8, nfold=0, total_fold=5, dataset=None, **kargs):
     kf = KFold(n_splits=total_fold, shuffle=True, random_state=142857)
@@ -59,6 +63,7 @@ class NeuroNetworkDataset(Dataset):
                 fc_winoverlap = 0,
                 fc_th = 0.5,
                 sc_th = 0.1) -> None:
+        
         data_root = DATAROOT[dname]
         data_name = DATANAME[dname]
         self.transform = transform
@@ -67,16 +72,16 @@ class NeuroNetworkDataset(Dataset):
         self.fc_th = fc_th
         self.sc_th = sc_th
         subn_p = 0
-        subtask_p = 1
-        subdir_p = 2
-        bold_format = BOLD_FORMAT[ATLAS_FACTORY.index(atlas_name)]
-        fc_format = '.csv'
+        subtask_p = 1 if dname not in ['adni', 'oasis'] else -1
+        # subdir_p = 2
+        # bold_format = BOLD_FORMAT[ATLAS_FACTORY.index(atlas_name)]
+        # fc_format = '.csv'
         assert atlas_name in ATLAS_FACTORY, atlas_name
         bold_root = f'{self.data_root}/{atlas_name}/BOLD'
         fc_root = f'{self.data_root}/{atlas_name}/FC'
         sc_root = f'{self.data_root}/ALL_SC'
         atlas_name = CORRECT_ATLAS_NAME(atlas_name)
-        fc_subs = [fn.split('_')[subn_p] for fn in os.listdir(fc_root) if fn.endswith(fc_format)]
+        fc_subs = [fn.split('_')[subn_p] for fn in os.listdir(fc_root)]
         fc_subs = np.unique(fc_subs)
         sc_subs = os.listdir(sc_root)
         subs = np.intersect1d(fc_subs, sc_subs)
@@ -88,7 +93,6 @@ class NeuroNetworkDataset(Dataset):
             if subn in subs:
                 sc, rnames, subn = load_sc(f"{sc_root}/{subn}", atlas_name)
                 self.all_sc[subn] = sc
-
         if fc_winsize == -1:
             for fn in tqdm(os.listdir(fc_root), desc='Load FC'):
                 if fn.split('_')[subn_p] in subs:
@@ -98,10 +102,13 @@ class NeuroNetworkDataset(Dataset):
             # compute FC in getitem
             self.data = {'bold': [], 'subject': [], 'label': [], 'winid': []}
             for fn in tqdm(os.listdir(bold_root), desc='Load BOLD'):
-                if fn.endswith(bold_format) and fn.split('_')[subn_p] in subs:
+                if fn.split('_')[subn_p] in subs:
                     bolds, rnames, fn = bold2fc(f"{bold_root}/{fn}", self.fc_winsize, fc_winoverlap, onlybold=True)
                     subn = fn.split('_')[subn_p]
-                    label = fn.split('_')[subtask_p]
+                    label = Path(fn).stem.split('_')[subtask_p]
+                    if dname in ['adni', 'oasis']:
+                        if label not in LABEL_REMAP[dname]: continue
+                        label = LABEL_REMAP[dname][label]
                     if label not in self.label_name: self.label_name.append(label)
                     self.data['bold'].extend(bolds) # N x T
                     self.data['subject'].extend([subn for _ in bolds])
@@ -116,7 +123,7 @@ class NeuroNetworkDataset(Dataset):
         # self.fc_winind = torch.LongTensor(self.data['winid'])
         self.subject = np.array(self.data['subject'])
         self.data_subj = np.unique(self.subject)
-        self.node_num = len(self.region[self.data_subj[0]])
+        self.node_num = len(self.data['bold'][0])
         self.cached_data = [None for _ in range(len(self))]
 
     def __getitem__(self, index):
@@ -146,10 +153,12 @@ class NeuroNetworkDataset(Dataset):
             data = {
                 'edge_index': edge_index,
                 'x': x,
-                'y': self.data['label'][index]
+                'y': self.data['label'][index],
+                'edge_index_fc': edge_index_fc,
+                'edge_index_sc': edge_index_sc
             }
             if self.transform is not None:
-                new_data = self.transform(edge_index_fc, edge_index_sc, x)
+                new_data = self.transform(Data.from_dict(data))
                 for key in new_data:
                     data[key] = new_data[key]
             self.cached_data[index] = Data.from_dict(data)
@@ -186,9 +195,13 @@ def load_sc(path, atlas_name):
     return mat, rnames, path.split('/')[-1]
 
 def bold2fc(path, winsize, overlap, onlybold=False):
-    bold_pd = pd.read_csv(path) if path.endswith('.csv') else pd.read_csv(path, sep='\t')
-    rnames = list(bold_pd.columns[1:])
-    bold = torch.from_numpy(np.array(bold_pd)[:, 1:]).float().T
+    if not path.endswith('.txt'):
+        bold_pd = pd.read_csv(path) if not path.endswith('.tsv') else pd.read_csv(path, sep='\t')
+        rnames = list(bold_pd.columns[1:])
+        bold = torch.from_numpy(np.array(bold_pd)[:, 1:]).float().T
+    else:
+        rnames = None
+        bold = torch.from_numpy(np.loadtxt(path)).float().T
     # bold = bold[torch.logical_not(bold.isnan().any(dim=1))]
     # rnames = [rnames[i] for i in torch.where(torch.logical_not(bold.isnan().any(dim=1)))[0]]
     # bold = (bold - bold.min()) / (bold.max() - bold.min())
