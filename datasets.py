@@ -81,30 +81,38 @@ class NeuroNetworkDataset(Dataset):
         fc_root = f'{self.data_root}/{atlas_name}/FC'
         sc_root = f'{self.data_root}/ALL_SC'
         atlas_name = CORRECT_ATLAS_NAME(atlas_name)
-        fc_subs = [fn.split('_')[subn_p] for fn in os.listdir(fc_root)]
-        fc_subs = np.unique(fc_subs)
-        sc_subs = os.listdir(sc_root)
-        subs = np.intersect1d(fc_subs, sc_subs)
-        self.all_sc = {}
-        self.all_fc = {}
-        self.region = {}
-        self.label_name = []
-        for subn in tqdm(os.listdir(sc_root), desc='Load SC'):
-            if subn in subs:
-                sc, rnames, subn = load_sc(f"{sc_root}/{subn}", atlas_name)
-                self.all_sc[subn] = sc
-        if fc_winsize == -1:
-            for fn in tqdm(os.listdir(fc_root), desc='Load FC'):
-                if fn.split('_')[subn_p] in subs:
-                    fc, rnames, _ = load_fc(f"{fc_root}/{fn}")
-                    self.all_fc[fn.split('_')[subn_p]] = [fc, rnames]
-        else:
+        data_dir = f'{dname}-{atlas_name}'
+        os.makedirs(f'data/{data_dir}', exist_ok=True)
+        if not os.path.exists(f'data/{data_dir}/raw.pt'):
+            fc_subs = [fn.split('_')[subn_p] for fn in os.listdir(fc_root)]
+            fc_subs = np.unique(fc_subs)
+            sc_subs = os.listdir(sc_root)
+            subs = np.intersect1d(fc_subs, sc_subs)
+            self.all_sc = {}
+            self.all_fc = {}
+            self.label_name = []
+            self.sc_common_rname = None
+            for subn in tqdm(os.listdir(sc_root), desc='Load SC'):
+                if subn in subs:
+                    sc, rnames, subn = load_sc(f"{sc_root}/{subn}", atlas_name)
+                    if self.sc_common_rname is None: self.sc_common_rname = rnames
+                    if self.sc_common_rname is not None: 
+                        _, rid, _ = np.intersect1d(rnames, self.sc_common_rname, return_indices=True)
+                        self.all_sc[subn] = sc[rid, :][:, rid]
+                    else:
+                        self.all_sc[subn] = sc
+            self.fc_common_rname = None
             # compute FC in getitem
             self.data = {'bold': [], 'subject': [], 'label': [], 'winid': []}
             for fn in tqdm(os.listdir(bold_root), desc='Load BOLD'):
                 if fn.split('_')[subn_p] in subs:
                     bolds, rnames, fn = bold2fc(f"{bold_root}/{fn}", self.fc_winsize, fc_winoverlap, onlybold=True)
                     subn = fn.split('_')[subn_p]
+                    if self.fc_common_rname is None: self.fc_common_rname = rnames
+                    if self.fc_common_rname is not None: 
+                        _, rid, _ = np.intersect1d(rnames, self.fc_common_rname, return_indices=True)
+                        bolds = [b[rid] for b in bolds]
+                
                     label = Path(fn).stem.split('_')[subtask_p]
                     if dname in ['adni', 'oasis']:
                         if label not in LABEL_REMAP[dname]: continue
@@ -113,19 +121,41 @@ class NeuroNetworkDataset(Dataset):
                     self.data['bold'].extend(bolds) # N x T
                     self.data['subject'].extend([subn for _ in bolds])
                     self.data['label'].extend([self.label_name.index(label) for _ in bolds])
-                    self.data['winid'].extend([i for i in bolds])
-                    self.region[subn] = rnames
+                    self.data['winid'].extend([i for i in range(len(bolds))])
 
+            # print("BOLD shape (N x T)", self.data['bold'][0].shape)
+            self.sc_common_rname = [rn.strip() for rn in self.sc_common_rname]
+            self.fc_common_rname = [rn.strip() for rn in self.fc_common_rname]
+            # print(self.sc_common_rname)
+            if self.sc_common_rname is not None and self.fc_common_rname is not None:
+                common_rname, sc_rid, fc_rid = np.intersect1d(self.sc_common_rname, self.fc_common_rname, return_indices=True)
+                for sub in self.all_sc:
+                    self.all_sc[sub] = self.all_sc[sub][:, sc_rid][sc_rid, :]
+                for i in range(len(self.data['subject'])):
+                    self.data['bold'][i] = self.data['bold'][i][fc_rid]
+                self.sc_common_rname = common_rname
+                self.fc_common_rname = common_rname
+            
+            torch.save(self.data, f'data/{data_dir}/raw.pt')
         
+        self.data = torch.load(f'data/{data_dir}/raw.pt')
         self.adj_type = adj_type
         self.node_attr = node_attr
         self.atlas_name = atlas_name
-        # self.fc_winind = torch.LongTensor(self.data['winid'])
         self.subject = np.array(self.data['subject'])
         self.data_subj = np.unique(self.subject)
         self.node_num = len(self.data['bold'][0])
         self.cached_data = [None for _ in range(len(self))]
-
+        print("Data num", len(self), "BOLD shape (N x T)", self.data['bold'][0].shape)
+        if self.transform is not None:
+            processed_fn = f'processed_FCth{self.fc_th}SCth{self.sc_th}'.replace('.', '')
+            if not os.path.exists(f'data/{data_dir}/{processed_fn}.pt'):
+                for _ in tqdm(self, desc='Processing'):
+                    pass
+                
+                torch.save(self.cached_data, f'data/{data_dir}/{processed_fn}.pt')
+            self.cached_data = torch.load(f'data/{data_dir}/{processed_fn}.pt')
+        
     def __getitem__(self, index):
         if self.cached_data[index] is None:
             subjn = self.subject[index]
@@ -197,8 +227,12 @@ def load_sc(path, atlas_name):
 def bold2fc(path, winsize, overlap, onlybold=False):
     if not path.endswith('.txt'):
         bold_pd = pd.read_csv(path) if not path.endswith('.tsv') else pd.read_csv(path, sep='\t')
-        rnames = list(bold_pd.columns[1:])
-        bold = torch.from_numpy(np.array(bold_pd)[:, 1:]).float().T
+        if isinstance(np.array(bold_pd)[0, 0], str):
+            rnames = list(bold_pd.columns[1:])
+            bold = torch.from_numpy(np.array(bold_pd)[:, 1:]).float().T
+        else:
+            rnames = list(bold_pd.columns)
+            bold = torch.from_numpy(np.array(bold_pd)).float().T
     else:
         rnames = None
         bold = torch.from_numpy(np.loadtxt(path)).float().T
@@ -224,41 +258,6 @@ def bold2fc(path, winsize, overlap, onlybold=False):
     fc = torch.stack(fc)
     return fc, rnames, path.split('/')[-1]
 
-
-def segment_node_with_neighbor(edge_index, node_attrs=[], edge_attrs=[], pad_value=0):
-    edge_attr_ch = [edge_attr.shape[1] for edge_attr in edge_attrs]
-    edge_index, edge_attrs = remove_self_loops(edge_index, torch.cat(edge_attrs, -1) if len(edge_attrs)>0 else None)
-    edge_index, edge_attrs = add_self_loops(edge_index, edge_attrs)
-    if len(node_attrs[0]) > edge_index.max()+1:
-        if edge_attrs is not None:
-            edge_attrs = torch.cat([edge_attrs] + [torch.zeros(1, edge_attrs.shape[1]) for i in range(edge_index.max()+1, len(node_attrs[0]))], 0)
-        edge_index = torch.cat([edge_index] + [torch.LongTensor([[i, i]]).T for i in range(edge_index.max()+1, len(node_attrs[0]))], 1)
-
-    sortid = edge_index[0].argsort()
-    edge_index = edge_index[:, sortid]
-    if edge_attrs is not None:
-        edge_attrs = edge_attrs[sortid]
-    edge_attr_ch = [0] + torch.LongTensor(edge_attr_ch).cumsum(0).tolist()
-    edge_attrs = [edge_attrs[:, edge_attr_ch[i]:edge_attr_ch[i+1]] for i in range(len(edge_attr_ch)-1)]
-    id_mask = edge_index[0] == edge_index[1]
-    edge_attrs.append(id_mask.float()[:, None])
-    for i in range(len(node_attrs)):
-        node_attrs[i] = torch.cat([node_attrs[i][edge_index[0]], node_attrs[i][edge_index[1]]], -1)
-    attrs = node_attrs + edge_attrs
-    segment = [torch.where(edge_index[0]==e)[0][0].item() for e in edge_index.unique()] + [edge_index.shape[1]]
-    seq = [[] for _ in range(len(attrs))]
-    seq_mask = []
-    for i in range(len(segment)-1):
-        for j in range(len(attrs)):
-            attr = attrs[j][segment[i]:segment[i+1]]
-            selfloop = torch.where(edge_index[0, segment[i]:segment[i+1]]==edge_index[1, segment[i]:segment[i+1]])[0].item()
-            attr = torch.cat([attr[selfloop:selfloop+1], attr[:selfloop], attr[selfloop+1:]]) # Move self loop to the first place
-            seq[j].append(attr)
-        seq_mask.append(torch.ones(seq[j][0].shape[0], 1))
-    seq = [pad_sequence(s, batch_first=True, padding_value=pad_value) for s in seq] # [(N, S, C)]
-    seq_mask = pad_sequence(seq_mask, batch_first=True, padding_value=0).float()
-    return seq, seq_mask, edge_index
-
 def CORRECT_ATLAS_NAME(n):
     if n == 'Brainnetome_264': return 'Brainnetome_246'
     if 'Shaefer_' in n: return n.replace('Shaefer', 'Schaefer')
@@ -268,4 +267,7 @@ def Schaefer_SCname_match_FCname(scn, fcn):
     pass
 
 if __name__ == '__main__':
-    pass
+    tl, vl, ds = dataloader_generator(atlas_name='Gordon_333')
+    # for data in tl:
+    #     print(data.x.shape)
+        

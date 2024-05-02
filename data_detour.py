@@ -1,24 +1,61 @@
 import torch
 import networkx as nx
 from torch_geometric.utils import remove_self_loops, add_self_loops
-# import numpy as np
+from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_std
 
-class NeuroDetour:
+
+
+class NeuroDetourNode:
+    
+    def __init__(self, k=5, node_num=116) -> None:
+        self.PEK = node_num
+        self.node_num = node_num
+        self.k = k
+        self.node_list = [i for i in range(node_num)]
+
+
+    def __call__(self, data):
+        edge_index1, edge_index2, features = data.edge_index_fc, data.edge_index_sc, data.x
+        edge_index1 = remove_self_loops(edge_index1)[0]
+        edge_index1  = edge_index1[:, edge_index1[0].argsort()]
+        G1 = nx.Graph()
+        G1.add_nodes_from(self.node_list)
+        G1.add_edges_from(edge_index1.T.tolist())
+        G2 = nx.Graph()
+        G2.add_nodes_from(self.node_list)
+        G2.add_edges_from(edge_index2.T.tolist())
+        de_list = []
+        for j in range(edge_index1.shape[1]):
+            de_list.append(get_de(G2, edge_index1[0, j].item(), edge_index1[1, j].item(), self.k))
+        dee = torch.FloatTensor(de_list)#[edge, k-1]
+        dee = torch.cat([
+            scatter_max(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1]))[0],
+            scatter_mean(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1])),
+            scatter_min(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1]))[0],
+            scatter_std(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1])),
+        ], -1)#[node, (k-1)*4]
+        lap = torch.from_numpy(nx.laplacian_matrix(G1).toarray()).float()
+        L, V = torch.linalg.eig(lap)
+        pe = V[:, :self.PEK].real
+        # xlist, pad_mask = segment_node_with_neighbor(edge_index1, node_attrs=[features, pe], edge_attrs=[dee])
+        return {
+            'token': data.x,
+            'PE': pe,
+            'DE': dee,
+            'ID': torch.zeros(data.x.shape[0], 1),
+            'mask': torch.arange(data.x.shape[0])
+        }
+    
+class NeuroDetourEdge:
     def __init__(self, k=5, node_num=116) -> None:
         self.k = k
-        self.dim_num = {
-            'token': node_num*2,
-            'PE': node_num*2,
-            'DE': k-1,
-            'ID': 1,
-        }
         self.node_list = [i for i in range(node_num)]
 
 
     def __call__(self, data):
         edge_index1, edge_index2, features = data.edge_index_fc, data.edge_index_sc, data.x
         N = features.shape[0]
-        PE_K = N
+        PE_K = 10
         G1 = nx.Graph()
         G1.add_nodes_from(self.node_list)
         G1.add_edges_from(edge_index1.T.tolist())

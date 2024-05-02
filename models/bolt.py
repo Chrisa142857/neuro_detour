@@ -1,7 +1,8 @@
-from .BolT.model import Model
+# from .BolT.model import Model
+from .BolT.bolT import BolT
 import copy
 
-def BolT(node_sz):
+def get_BolT(node_sz):
     
     hyperParams = {
 
@@ -35,6 +36,8 @@ def BolT(node_sz):
 
     }
     hyperParams = Option(hyperParams)
+
+    return BolT(hyperParams)
 
 
 class Option(object):

@@ -8,7 +8,7 @@ from einops import rearrange
 
 # import transformers
 
-from Models.BolT.bolTransformerBlock import BolTransformerBlock
+from BolT.bolTransformerBlock import BolTransformerBlock
 
 
 class BolT(nn.Module):

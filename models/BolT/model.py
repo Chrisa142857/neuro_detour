@@ -1,4 +1,4 @@
-from Models.BolT.bolT import BolT
+from .BolT.bolT import BolT
 import torch
 import numpy as np
 from einops import rearrange

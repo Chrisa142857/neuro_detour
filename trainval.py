@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch
 import argparse
 import numpy as np
-from data_detour import NeuroDetour
+from data_detour import NeuroDetourNode, NeuroDetourEdge
 
 MODEL_BANK = {
     'neurodetour': neuro_detour.DetourTransformer,
@@ -62,19 +62,28 @@ def main():
     f1_scores = []
     prec_scores = []
     rec_scores = []
-    input_dim = ATLAS_ROI_N[args.atlas]
+    node_sz = ATLAS_ROI_N[args.atlas]
     if args.models != 'neurodetour':
         transform = None
-        dek = 0
+        dek, pek = 0, 0
+        input_dim = node_sz
     else:
-        transform = NeuroDetour(k=4, node_num=input_dim)
-        dek = transform.k
+        transform = NeuroDetourNode(k=4, node_num=node_sz)
+        if isinstance(transform, NeuroDetourEdge):
+            input_dim = node_sz*2
+            dek = transform.k
+            pek = transform.PEK*2
+        else:
+            input_dim = node_sz
+            pek = transform.PEK
+            dek = transform.k * 4
+
     for i in range(5):
         train_loader, val_loader, dataset = dataloader_generator(batch_size=args.batch_size, nfold=i, dataset=dataset, 
                                                                  node_attr=args.node_attr, adj_type=args.adj_type, transform=transform, dname=args.dataname,
                                                                  fc_winsize=args.bold_winsize, atlas_name=args.atlas)
-        model = MODEL_BANK[args.models](node_sz=input_dim, out_channel=hiddim, in_channel=input_dim, dek=dek).to(device)
-        classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=nclass, node_sz=input_dim).to(device)
+        model = MODEL_BANK[args.models](node_sz=node_sz, out_channel=hiddim, in_channel=input_dim, dek=dek, pek=pek).to(device)
+        classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=nclass, node_sz=node_sz).to(device)
         optimizer = optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=args.lr, weight_decay=args.decay)
         # print(optimizer)
         best_f1 = 0
