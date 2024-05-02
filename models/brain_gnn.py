@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-from torch_geometric.nn import TopKPooling
-from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
+from torch_geometric.nn import TopKPooling#, MessagePassing
+# from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 from torch_geometric.utils import (add_self_loops, sort_edge_index,
                                    remove_self_loops)
 from torch_sparse import spspmm
@@ -25,12 +25,13 @@ from torch_geometric.utils import add_remaining_self_loops,softmax
 
 from torch_geometric.typing import (OptTensor)
 
-from utils import uniform
+from .utils import uniform
 
 
 ##########################################################################################################################
 class Network(torch.nn.Module):
-    def __init__(self, indim, ratio, nclass, k=8, R=200):
+    def __init__(self, node_sz, out_channel,
+            in_channel, ratio=0.3, k=8, **kargs):
         '''
 
         :param indim: (int) node feature dimension
@@ -39,8 +40,11 @@ class Network(torch.nn.Module):
         :param k: (int) number of communities
         :param R: (int) number of ROIs
         '''
+        indim = in_channel
+        R = node_sz
+        self.ratio = ratio
         super(Network, self).__init__()
-        self.nclass = nclass
+        # self.nclass = nclass
         self.topk_loss_ratio = 0.5
         self.lamb0 = 1
         self.lamb1 = 0
@@ -49,11 +53,11 @@ class Network(torch.nn.Module):
         self.lamb4 = 0.1
         self.lamb5 = 0.1
         self.indim = indim
-        self.dim1 = 32
-        self.dim2 = 32
-        self.dim3 = 512
-        self.dim4 = 256
-        self.dim5 = 8
+        self.dim1 = out_channel
+        self.dim2 = out_channel
+        self.dim3 = out_channel
+        # self.dim4 = out_channel//2
+        # self.dim5 = out_channel//8
         self.k = k
         self.R = R
 
@@ -64,55 +68,60 @@ class Network(torch.nn.Module):
         self.conv2 = MyNNConv(self.dim1, self.dim2, self.n2, normalize=False)
         self.pool2 = TopKPooling(self.dim2, ratio=ratio, multiplier=1, nonlinearity=torch.sigmoid)
 
-        #self.fc1 = torch.nn.Linear((self.dim2) * 2, self.dim2)
-        self.fc1 = torch.nn.Linear((self.dim1+self.dim2)*2, self.dim2)
+        self.fc1 = torch.nn.Linear(self.dim2, self.dim2)
+        # self.fc1 = torch.nn.Linear((self.dim1+self.dim2)*2, self.dim2)
         self.bn1 = torch.nn.BatchNorm1d(self.dim2)
         self.fc2 = torch.nn.Linear(self.dim2, self.dim3)
         self.bn2 = torch.nn.BatchNorm1d(self.dim3)
-        self.fc3 = torch.nn.Linear(self.dim3, nclass)
+        # self.fc3 = torch.nn.Linear(self.dim3, nclass)
 
 
 
 
-    def forward(self, x, edge_index, batch, edge_attr, pos, label=None):
+    def forward(self, data):
+        x = data.x
+        edge_index = data.edge_index
+        batchsz=data.batch.max()+1
+        batch = data.batch
+        N = len(torch.where(data.batch==0)[0])
+        pseudo = torch.eye(N).to(data.x.device).repeat(batchsz,1)
+        x = self.conv1(x, edge_index, pseudo=pseudo, batchsz=batchsz)
+        x, edge_index, edge_attr, batch, perm, score1 = self.pool1(x, edge_index, batch=batch)
 
-        x = self.conv1(x, edge_index, edge_attr, pos)
-        x, edge_index, edge_attr, batch, perm, score1 = self.pool1(x, edge_index, edge_attr, batch)
-
-        pos = pos[perm]
-        x1 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
-
-        edge_attr = edge_attr.squeeze()
+        pseudo = pseudo[perm]
+        # x1 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
+        # x1 = x
+        # edge_attr = edge_attr.squeeze()
         edge_index, edge_attr = self.augment_adj(edge_index, edge_attr, x.size(0))
 
-        x = self.conv2(x, edge_index, edge_attr, pos)
-        x, edge_index, edge_attr, batch, perm, score2 = self.pool2(x, edge_index,edge_attr, batch)
+        x = self.conv2(x, edge_index, pseudo=pseudo, batchsz=batchsz)
+        x, edge_index, edge_attr, batch, perm, score2 = self.pool2(x, edge_index, batch=batch)
 
-        x2 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
-
-        x = torch.cat([x1,x2], dim=1)
+        # x2 = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
+        # x2 = x
+        # x = torch.cat([x1,x2], dim=1)
         x = self.bn1(F.relu(self.fc1(x)))
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.bn2(F.relu(self.fc2(x)))
-        x= F.dropout(x, p=0.5, training=self.training)
-        x = F.log_softmax(self.fc3(x), dim=-1)
+        x = F.dropout(x, p=0.5, training=self.training)
+        # x = F.log_softmax(self.fc3(x), dim=-1)
 
         # return x,self.pool1.weight,self.pool2.weight, torch.sigmoid(score1).view(x.size(0),-1), torch.sigmoid(score2).view(x.size(0),-1)
-        w1, w2, s1, s2 = self.pool1.weight, self.pool2.weight, torch.sigmoid(score1).view(x.size(0),-1), torch.sigmoid(score2).view(x.size(0),-1)
-        if label is not None:
-            loss_c = F.nll_loss(x, label)
-            loss_p1 = (torch.norm(w1, p=2)-1) ** 2
-            loss_p2 = (torch.norm(w2, p=2)-1) ** 2
-            loss_tpk1 = topk_loss(s1,self.topk_loss_ratio)
-            loss_tpk2 = topk_loss(s2,self.topk_loss_ratio)
-            loss_consist = 0
-            for c in range(self.nclass):
-                loss_consist += consist_loss(s1[label == c])
-            loss = self.lamb0*loss_c + self.lamb1 * loss_p1 + self.lamb2 * loss_p2 \
-                    + self.lamb3 * loss_tpk1 + self.lamb4 *loss_tpk2 + self.lamb5* loss_consist
-            return x, loss
-        else:
-            return x
+        # w1, w2, s1, s2 = self.pool1.weight, self.pool2.weight, torch.sigmoid(score1).view(x.size(0),-1), torch.sigmoid(score2).view(x.size(0),-1)
+        # if label is not None:
+        #     loss_c = F.nll_loss(x, label)
+        #     loss_p1 = (torch.norm(w1, p=2)-1) ** 2
+        #     loss_p2 = (torch.norm(w2, p=2)-1) ** 2
+        #     loss_tpk1 = topk_loss(s1,self.topk_loss_ratio)
+        #     loss_tpk2 = topk_loss(s2,self.topk_loss_ratio)
+        #     loss_consist = 0
+        #     for c in range(self.nclass):
+        #         loss_consist += consist_loss(s1[label == c])
+        #     loss = self.lamb0*loss_c + self.lamb1 * loss_p1 + self.lamb2 * loss_p2 \
+        #             + self.lamb3 * loss_tpk1 + self.lamb4 *loss_tpk2 + self.lamb5* loss_consist
+        #     return x, loss
+        # else:
+        return x, edge_index, batch
 
     def augment_adj(self, edge_index, edge_weight, num_nodes):
         edge_index, edge_weight = add_self_loops(edge_index, edge_weight,
@@ -144,67 +153,6 @@ def consist_loss(s):
     L = L.to(s.device)
     res = torch.trace(torch.transpose(s,0,1) @ L @ s)/(s.shape[0]*s.shape[0])
     return res
-
-class MyNNConv(MyMessagePassing):
-    def __init__(self, in_channels, out_channels, nn, normalize=False, bias=True,
-                 **kwargs):
-        super(MyNNConv, self).__init__(aggr='mean', **kwargs)
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.normalize = normalize
-        self.nn = nn
-        #self.weight = Parameter(torch.Tensor(self.in_channels, out_channels))
-
-        if bias:
-            self.bias = Parameter(torch.Tensor(out_channels))
-        else:
-            self.register_parameter('bias', None)
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-#        uniform(self.in_channels, self.weight)
-        uniform(self.in_channels, self.bias)
-
-    def forward(self, x, edge_index, edge_weight=None, pseudo= None, size=None):
-        """"""
-        edge_weight = edge_weight.squeeze()
-        if size is None and torch.is_tensor(x):
-            edge_index, edge_weight = add_remaining_self_loops(
-                edge_index, edge_weight, 1, x.size(0))
-
-        weight = self.nn(pseudo).view(-1, self.in_channels, self.out_channels)
-        if torch.is_tensor(x):
-            x = torch.matmul(x.unsqueeze(1), weight).squeeze(1)
-        else:
-            x = (None if x[0] is None else torch.matmul(x[0].unsqueeze(1), weight).squeeze(1),
-                 None if x[1] is None else torch.matmul(x[1].unsqueeze(1), weight).squeeze(1))
-
-        # weight = self.nn(pseudo).view(-1, self.out_channels,self.in_channels)
-        # if torch.is_tensor(x):
-        #     x = torch.matmul(x.unsqueeze(1), weight.permute(0,2,1)).squeeze(1)
-        # else:
-        #     x = (None if x[0] is None else torch.matmul(x[0].unsqueeze(1), weight).squeeze(1),
-        #          None if x[1] is None else torch.matmul(x[1].unsqueeze(1), weight).squeeze(1))
-
-        return self.propagate(edge_index, size=size, x=x,
-                              edge_weight=edge_weight)
-
-    def message(self, edge_index_i, size_i, x_j, edge_weight, ptr: OptTensor):
-        edge_weight = softmax(edge_weight, edge_index_i, ptr, size_i)
-        return x_j if edge_weight is None else edge_weight.view(-1, 1) * x_j
-
-    def update(self, aggr_out):
-        if self.bias is not None:
-            aggr_out = aggr_out + self.bias
-        if self.normalize:
-            aggr_out = F.normalize(aggr_out, p=2, dim=-1)
-        return aggr_out
-
-    def __repr__(self):
-        return '{}({}, {})'.format(self.__class__.__name__, self.in_channels,
-                                   self.out_channels)
 
 
 class MyMessagePassing(torch.nn.Module):
@@ -343,3 +291,66 @@ class MyMessagePassing(torch.nn.Module):
         which was initially passed to :meth:`propagate`."""
 
         return aggr_out 
+    
+    
+class MyNNConv(MyMessagePassing):
+    def __init__(self, in_channels, out_channels, nn, normalize=False, bias=True,
+                 **kwargs):
+        super(MyNNConv, self).__init__(aggr='mean', **kwargs)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.normalize = normalize
+        self.nn = nn
+        #self.weight = Parameter(torch.Tensor(self.in_channels, out_channels))
+
+        if bias:
+            self.bias = Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+#        uniform(self.in_channels, self.weight)
+        uniform(self.in_channels, self.bias)
+
+    def forward(self, x, edge_index, edge_weight=None, pseudo= None, size=None, batchsz=32):
+        """"""
+        if edge_weight is not None:
+            edge_weight = edge_weight.squeeze()
+        if size is None and torch.is_tensor(x):
+            edge_index, edge_weight = add_remaining_self_loops(
+                edge_index, edge_weight, 1, x.size(0))
+
+        weight = self.nn(pseudo).view(-1, self.in_channels, self.out_channels)
+        if torch.is_tensor(x):
+            x = torch.matmul(x.unsqueeze(1), weight).squeeze(1)
+        else:
+            x = (None if x[0] is None else torch.matmul(x[0].unsqueeze(1), weight).squeeze(1),
+                 None if x[1] is None else torch.matmul(x[1].unsqueeze(1), weight).squeeze(1))
+
+        # weight = self.nn(pseudo).view(-1, self.out_channels,self.in_channels)
+        # if torch.is_tensor(x):
+        #     x = torch.matmul(x.unsqueeze(1), weight.permute(0,2,1)).squeeze(1)
+        # else:
+        #     x = (None if x[0] is None else torch.matmul(x[0].unsqueeze(1), weight).squeeze(1),
+        #          None if x[1] is None else torch.matmul(x[1].unsqueeze(1), weight).squeeze(1))
+
+        return self.propagate(edge_index, size=size, x=x,
+                              edge_weight=edge_weight)
+
+    def message(self, edge_index_i, size_i, x_j, edge_weight, ptr: OptTensor):
+        # edge_weight = softmax(edge_weight, edge_index_i, ptr, size_i)
+        return x_j if edge_weight is None else edge_weight.view(-1, 1) * x_j
+
+    def update(self, aggr_out):
+        if self.bias is not None:
+            aggr_out = aggr_out + self.bias
+        if self.normalize:
+            aggr_out = F.normalize(aggr_out, p=2, dim=-1)
+        return aggr_out
+
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__, self.in_channels,
+                                   self.out_channels)

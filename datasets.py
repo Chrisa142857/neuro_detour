@@ -81,7 +81,7 @@ class NeuroNetworkDataset(Dataset):
         fc_root = f'{self.data_root}/{atlas_name}/FC'
         sc_root = f'{self.data_root}/ALL_SC'
         atlas_name = CORRECT_ATLAS_NAME(atlas_name)
-        data_dir = f'{dname}-{atlas_name}'
+        data_dir = f'{dname}-{atlas_name}-BOLDwin{fc_winsize}'
         os.makedirs(f'data/{data_dir}', exist_ok=True)
         if not os.path.exists(f'data/{data_dir}/raw.pt'):
             fc_subs = [fn.split('_')[subn_p] for fn in os.listdir(fc_root)]
@@ -123,11 +123,9 @@ class NeuroNetworkDataset(Dataset):
                     self.data['label'].extend([self.label_name.index(label) for _ in bolds])
                     self.data['winid'].extend([i for i in range(len(bolds))])
 
-            # print("BOLD shape (N x T)", self.data['bold'][0].shape)
-            self.sc_common_rname = [rn.strip() for rn in self.sc_common_rname]
-            self.fc_common_rname = [rn.strip() for rn in self.fc_common_rname]
-            # print(self.sc_common_rname)
             if self.sc_common_rname is not None and self.fc_common_rname is not None:
+                self.sc_common_rname = [rn.strip() for rn in self.sc_common_rname]
+                self.fc_common_rname = [rn.strip() for rn in self.fc_common_rname]
                 common_rname, sc_rid, fc_rid = np.intersect1d(self.sc_common_rname, self.fc_common_rname, return_indices=True)
                 for sub in self.all_sc:
                     self.all_sc[sub] = self.all_sc[sub][:, sc_rid][sc_rid, :]
@@ -135,10 +133,11 @@ class NeuroNetworkDataset(Dataset):
                     self.data['bold'][i] = self.data['bold'][i][fc_rid]
                 self.sc_common_rname = common_rname
                 self.fc_common_rname = common_rname
-            
+            self.data['all_sc'] = self.all_sc
             torch.save(self.data, f'data/{data_dir}/raw.pt')
         
         self.data = torch.load(f'data/{data_dir}/raw.pt')
+        self.all_sc = self.data['all_sc']
         self.adj_type = adj_type
         self.node_attr = node_attr
         self.atlas_name = atlas_name
@@ -148,7 +147,7 @@ class NeuroNetworkDataset(Dataset):
         self.cached_data = [None for _ in range(len(self))]
         print("Data num", len(self), "BOLD shape (N x T)", self.data['bold'][0].shape)
         if self.transform is not None:
-            processed_fn = f'processed_FCth{self.fc_th}SCth{self.sc_th}'.replace('.', '')
+            processed_fn = f'processed_adj{self.adj_type}x{self.node_attr}_FCth{self.fc_th}SCth{self.sc_th}_{type(self.transform).__name__}{self.transform.k}'.replace('.', '')
             if not os.path.exists(f'data/{data_dir}/{processed_fn}.pt'):
                 for _ in tqdm(self, desc='Processing'):
                     pass

@@ -1,12 +1,12 @@
 from datasets import dataloader_generator
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from models import brain_net_transformer, neuro_detour
+from models import brain_net_transformer, neuro_detour, brain_gnn
 from models.classifier import Classifier
 from torch_geometric.nn import GCNConv, GATConv, SAGEConv, SGConv
 from tqdm import trange, tqdm
 import torch.optim as optim
 import torch.nn as nn
-import torch
+import torch, math
 import argparse
 import numpy as np
 from data_detour import NeuroDetourNode, NeuroDetourEdge
@@ -14,6 +14,7 @@ from data_detour import NeuroDetourNode, NeuroDetourEdge
 MODEL_BANK = {
     'neurodetour': neuro_detour.DetourTransformer,
     'bnt': brain_net_transformer.BrainNetworkTransformer,
+    'braingnn': brain_gnn.Network
 }
 CLASSIFIER_BANK = {
     'mlp': nn.Linear,
@@ -38,7 +39,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=32,
                         help='Input batch size for training (default: 32)')
     parser.add_argument('--epochs', type=int, default = 100)
-    parser.add_argument('--models', type=str, default = 'bnt')
+    parser.add_argument('--models', type=str, default = 'braingnn')
     parser.add_argument('--classifier', type=str, default = 'gcn')
     parser.add_argument('--max_patience', type=int, default = 30)
     parser.add_argument('--hiddim', type=int, default = 768)
@@ -68,7 +69,8 @@ def main():
         dek, pek = 0, 0
         input_dim = node_sz
     else:
-        transform = NeuroDetourNode(k=4, node_num=node_sz)
+        transform = NeuroDetourNode(k=5, node_num=node_sz)
+        # transform = NeuroDetourEdge(k=4, node_num=node_sz)
         if isinstance(transform, NeuroDetourEdge):
             input_dim = node_sz*2
             dek = transform.k
@@ -83,8 +85,8 @@ def main():
                                                                  node_attr=args.node_attr, adj_type=args.adj_type, transform=transform, dname=args.dataname,
                                                                  fc_winsize=args.bold_winsize, atlas_name=args.atlas)
         model = MODEL_BANK[args.models](node_sz=node_sz, out_channel=hiddim, in_channel=input_dim, dek=dek, pek=pek).to(device)
-        classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=nclass, node_sz=node_sz).to(device)
-        optimizer = optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=args.lr, weight_decay=args.decay)
+        classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=nclass, node_sz=node_sz if args.models!='braingnn' else braingnn_nodesz(node_sz, model.ratio)).to(device)
+        optimizer = optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=args.lr, weight_decay=args.decay) 
         # print(optimizer)
         best_f1 = 0
         patience = 0
@@ -133,7 +135,11 @@ def train(model, classifier, device, loader, optimizer):
     for step, batch in enumerate(loader):
         batch = batch.to(device)
         feat = model(batch)
-        y = classifier(feat, batch.edge_index, batch.batch)
+        edge_index = batch.edge_index
+        batchid = batch.batch
+        if isinstance(model, brain_gnn.Network):  # brain gnn pooled network
+            feat, edge_index, batchid = feat
+        y = classifier(feat, edge_index, batchid)
         loss = loss_fn(y, batch.y)
         optimizer.zero_grad()
         loss.backward()
@@ -152,7 +158,11 @@ def eval(model, classifier, device, loader):
 
         with torch.no_grad():
             feat = model(batch)
-            pred = classifier(feat, batch.edge_index, batch.batch)
+            edge_index = batch.edge_index
+            batchid = batch.batch
+            if isinstance(model, brain_gnn.Network):  # brain gnn pooled network
+                feat, edge_index, batchid = feat
+            pred = classifier(feat, edge_index, batchid)
 
         y_true.append(batch.y)
         y_scores.append(pred.detach().cpu())
@@ -162,5 +172,11 @@ def eval(model, classifier, device, loader):
     acc = accuracy_score(y_true, y_scores)
     prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_scores, average='weighted')
     return acc, prec, rec, f1
+
+def braingnn_nodesz(node_sz, ratio):
+    if node_sz != 333:
+        return math.ceil(node_sz*ratio*ratio)
+    else:
+        return 31
 
 if __name__ == '__main__': main()

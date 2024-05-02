@@ -49,13 +49,14 @@ class NeuroDetourNode:
 class NeuroDetourEdge:
     def __init__(self, k=5, node_num=116) -> None:
         self.k = k
+        self.PEK = node_num
+        self.node_num = node_num
         self.node_list = [i for i in range(node_num)]
 
 
     def __call__(self, data):
         edge_index1, edge_index2, features = data.edge_index_fc, data.edge_index_sc, data.x
         N = features.shape[0]
-        PE_K = 10
         G1 = nx.Graph()
         G1.add_nodes_from(self.node_list)
         G1.add_edges_from(edge_index1.T.tolist())
@@ -68,7 +69,7 @@ class NeuroDetourEdge:
         dee = torch.FloatTensor(de_list)#[:, None]
         lap = torch.from_numpy(nx.laplacian_matrix(G1).toarray()).float()
         L, V = torch.linalg.eig(lap)
-        pe = V[:, :PE_K].real
+        pe = V[:, :self.PEK].real
         xlist, pad_mask = segment_node_with_neighbor(edge_index1, node_attrs=[features, pe], edge_attrs=[dee])
         return {
             'token': xlist[0],
