@@ -29,6 +29,7 @@ ATLAS_ROI_N = {
     'D_160': 160
 }
 DATA_CLASS_N = {
+    'ukb': 2,
     'hcpa': 4,
     'adni': 2,
     'oasis': 2,
@@ -64,19 +65,23 @@ def main():
     prec_scores = []
     rec_scores = []
     node_sz = ATLAS_ROI_N[args.atlas]
-    if args.models != 'neurodetour':
-        transform = None
-        dek, pek = 0, 0
+    # if args.models != 'neurodetour':
+    transform = None
+    dek, pek = 0, 0
+    if args.node_attr != 'BOLD':
         input_dim = node_sz
     else:
+        input_dim = args.bold_winsize
+    # else:
+    if args.models == 'neurodetour':
         transform = NeuroDetourNode(k=5, node_num=node_sz)
         # transform = NeuroDetourEdge(k=4, node_num=node_sz)
         if isinstance(transform, NeuroDetourEdge):
-            input_dim = node_sz*2
+            input_dim = input_dim*2
             dek = transform.k
             pek = transform.PEK*2
         else:
-            input_dim = node_sz
+            # input_dim = node_sz
             pek = transform.PEK
             dek = transform.k * 4
 
@@ -137,7 +142,7 @@ def train(model, classifier, device, loader, optimizer):
         feat = model(batch)
         edge_index = batch.edge_index
         batchid = batch.batch
-        if isinstance(model, brain_gnn.Network):  # brain gnn pooled network
+        if len(feat) == 3:  # brainGnn Selected Topk nodes
             feat, edge_index, batchid = feat
         y = classifier(feat, edge_index, batchid)
         loss = loss_fn(y, batch.y)
@@ -160,7 +165,7 @@ def eval(model, classifier, device, loader):
             feat = model(batch)
             edge_index = batch.edge_index
             batchid = batch.batch
-            if isinstance(model, brain_gnn.Network):  # brain gnn pooled network
+            if len(feat) == 3:  # brainGnn Selected Topk nodes
                 feat, edge_index, batchid = feat
             pred = classifier(feat, edge_index, batchid)
 

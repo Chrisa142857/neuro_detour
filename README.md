@@ -5,7 +5,7 @@
  * UKB (2-task, 2-session) ~9000 fMRI ~4200 subjects
  * ADNI (AD/CN) 135 rfMRI&DWI
  * OASIS (AD/CN) 250 rfMRI&DWI
- * ADNI-DOD (unknown) 95 DWI 319 rfMRI
+ * ADNI-DOD (Label unknown) 95 DWI 319 rfMRI
  * PPMI (Autism, not done)
 
 ## Compare methods

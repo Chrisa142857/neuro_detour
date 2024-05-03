@@ -29,6 +29,11 @@ DATANAME = {
     'hcpa': 'HCP-A-SC_FC',
     'ukb': 'UKB-SC-FC'
 }
+LABEL_NAME_P = {
+    'adni': -1, 'oasis': -1, 
+    'hcpa': 1, 
+    'ukb': 2,
+}
 
 LABEL_REMAP = {
     'adni': {'CN': 'CN', 'SMC': 'CN', 'EMCI': 'CN', 'LMCI': 'AD', 'AD': 'AD'},
@@ -72,7 +77,7 @@ class NeuroNetworkDataset(Dataset):
         self.fc_th = fc_th
         self.sc_th = sc_th
         subn_p = 0
-        subtask_p = 1 if dname not in ['adni', 'oasis'] else -1
+        subtask_p = LABEL_NAME_P[dname]
         # subdir_p = 2
         # bold_format = BOLD_FORMAT[ATLAS_FACTORY.index(atlas_name)]
         # fc_format = '.csv'
@@ -86,15 +91,16 @@ class NeuroNetworkDataset(Dataset):
         if not os.path.exists(f'data/{data_dir}/raw.pt'):
             fc_subs = [fn.split('_')[subn_p] for fn in os.listdir(fc_root)]
             fc_subs = np.unique(fc_subs)
-            sc_subs = os.listdir(sc_root)
+            sc_subs = [fn.split('_')[subn_p] for fn in os.listdir(sc_root)]
             subs = np.intersect1d(fc_subs, sc_subs)
             self.all_sc = {}
             self.all_fc = {}
             self.label_name = []
             self.sc_common_rname = None
-            for subn in tqdm(os.listdir(sc_root), desc='Load SC'):
+            for fn in tqdm(os.listdir(sc_root), desc='Load SC'):
+                subn = fn.split('_')[subn_p]
                 if subn in subs:
-                    sc, rnames, subn = load_sc(f"{sc_root}/{subn}", atlas_name)
+                    sc, rnames, _ = load_sc(f"{sc_root}/{fn}", atlas_name)
                     if self.sc_common_rname is None: self.sc_common_rname = rnames
                     if self.sc_common_rname is not None: 
                         _, rid, _ = np.intersect1d(rnames, self.sc_common_rname, return_indices=True)
@@ -134,6 +140,7 @@ class NeuroNetworkDataset(Dataset):
                 self.sc_common_rname = common_rname
                 self.fc_common_rname = common_rname
             self.data['all_sc'] = self.all_sc
+            self.data['label_name'] = self.label_name
             torch.save(self.data, f'data/{data_dir}/raw.pt')
         
         self.data = torch.load(f'data/{data_dir}/raw.pt')
@@ -145,7 +152,7 @@ class NeuroNetworkDataset(Dataset):
         self.data_subj = np.unique(self.subject)
         self.node_num = len(self.data['bold'][0])
         self.cached_data = [None for _ in range(len(self))]
-        print("Data num", len(self), "BOLD shape (N x T)", self.data['bold'][0].shape)
+        print("Data num", len(self), "BOLD shape (N x T)", self.data['bold'][0].shape, "Label name", self.data['label_name'])
         if self.transform is not None:
             processed_fn = f'processed_adj{self.adj_type}x{self.node_attr}_FCth{self.fc_th}SCth{self.sc_th}_{type(self.transform).__name__}{self.transform.k}'.replace('.', '')
             if not os.path.exists(f'data/{data_dir}/{processed_fn}.pt'):
@@ -204,18 +211,20 @@ def load_fc(fpath):
     return mat, rnames, fpath.split('/')[-1]
 
 def load_sc(path, atlas_name):
-    matfns = [f for f in os.listdir(path) if f.endswith('.mat')]
-    txtfns = [f for f in os.listdir(path) if f.endswith('.txt')]
-    if len(matfns) > 0:
-        fpath = f"{path}/{matfns[0]}"
+    if not path.endswith('.mat') and not path.endswith('.txt'):
+        matfns = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.mat')]
+        txtfns = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.txt')]
+        return load_sc(matfns[0] if len(matfns) > 0 else txtfns[0], atlas_name)
+    if path.endswith('.mat'):
+        fpath = f"{path}"
         sc_mat = loadmat(fpath)
         mat = sc_mat[f"{atlas_name.lower().replace('_','')}_sift_radius2_count_connectivity"]
         mat = torch.from_numpy(mat.astype(np.float32))
         mat = (mat + mat.T) / 2
         mat = (mat - mat.min()) / (mat.max() - mat.min())
         rnames = sc_mat[f"{atlas_name.lower().replace('_','')}_region_labels"]
-    elif len(txtfns) > 0:
-        fpath = f"{path}/{txtfns[0]}"
+    elif path.endswith('.txt'):
+        fpath = f"{path}"
         mat = np.loadtxt(fpath)
         mat = torch.from_numpy(mat.astype(np.float32))
         mat = (mat + mat.T) / 2
@@ -266,7 +275,7 @@ def Schaefer_SCname_match_FCname(scn, fcn):
     pass
 
 if __name__ == '__main__':
-    tl, vl, ds = dataloader_generator(atlas_name='Gordon_333')
+    tl, vl, ds = dataloader_generator(dname='ukb', atlas_name='AAL_116')
     # for data in tl:
     #     print(data.x.shape)
         

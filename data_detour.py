@@ -28,21 +28,23 @@ class NeuroDetourNode:
         for j in range(edge_index1.shape[1]):
             de_list.append(get_de(G2, edge_index1[0, j].item(), edge_index1[1, j].item(), self.k))
         dee = torch.FloatTensor(de_list)#[edge, k-1]
-        dee = torch.cat([
+        node_dee = torch.cat([
             scatter_max(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1]))[0],
             scatter_mean(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1])),
             scatter_min(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1]))[0],
             scatter_std(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1])),
         ], -1)#[node, (k-1)*4]
+        token = data.x
+        # token = torch.cat([data.x, torch.cat([edge_index1[0:1].T, dee, edge_index1[1:2].T, torch.zeros(dee.shape[0], data.x.shape[1]-dee.shape[1]-2)], dim=1)], dim=0)
         lap = torch.from_numpy(nx.laplacian_matrix(G1).toarray()).float()
         L, V = torch.linalg.eig(lap)
         pe = V[:, :self.PEK].real
         # xlist, pad_mask = segment_node_with_neighbor(edge_index1, node_attrs=[features, pe], edge_attrs=[dee])
         return {
-            'token': data.x,
+            'token': token,
             'PE': pe,
-            'DE': dee,
-            'ID': torch.zeros(data.x.shape[0], 1),
+            'DE': node_dee,
+            'ID': torch.ones(data.x.shape[0], 1),#torch.cat([torch.ones(data.x.shape[0], 1), torch.ones(dee.shape[0], 1)*2]),
             'mask': torch.arange(data.x.shape[0])
         }
     

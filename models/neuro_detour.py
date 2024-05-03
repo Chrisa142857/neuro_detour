@@ -63,6 +63,7 @@ class DetourTransformer(nn.Module):
                     x = x + self.extra_encs[ei](encoding)
         if self.concat:
             x = self.lin_concat(x)
-        x = self.net(x)
+        x = x.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), x.shape[1])
+        x = self.net(x).view(x.shape[0]*x.shape[1], x.shape[-1])
         x = x[pad_mask]
         return x

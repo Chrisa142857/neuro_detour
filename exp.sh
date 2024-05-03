@@ -66,3 +66,9 @@ dt=$(date '+%d-%m-%Y-%H-%M-%S');
 python trainval.py --models braingnn --classifier gcn --dataname hcpa --bold_winsize 500 --device cuda:3 --atlas Gordon_333 > logs/braingnn_gcn_hcpa_statfc_gordon_${dt}.log
 dt=$(date '+%d-%m-%Y-%H-%M-%S');
 python trainval.py --models braingnn --classifier gcn --dataname hcpa --bold_winsize 100 --device cuda:1 --atlas Gordon_333 > logs/braingnn_gcn_hcpa_dynfc_gordon_${dt}.log
+
+
+
+dt=$(date '+%d-%m-%Y-%H-%M-%S');
+python trainval.py --models braingnn --classifier gcn --dataname ukb --bold_winsize 500 --device cuda:2 > logs/braingnn_gcn_ukb_statfc_aal_${dt}.log
+
