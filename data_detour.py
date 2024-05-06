@@ -45,7 +45,7 @@ class NeuroDetourNode:
             'PE': pe,
             'DE': node_dee,
             'ID': torch.ones(data.x.shape[0], 1),#torch.cat([torch.ones(data.x.shape[0], 1), torch.ones(dee.shape[0], 1)*2]),
-            'mask': torch.arange(data.x.shape[0])
+            'mask': torch.ones(data.x.shape[0]).bool()
         }
     
 class NeuroDetourEdge:
@@ -73,12 +73,14 @@ class NeuroDetourEdge:
         L, V = torch.linalg.eig(lap)
         pe = V[:, :self.PEK].real
         xlist, pad_mask = segment_node_with_neighbor(edge_index1, node_attrs=[features, pe], edge_attrs=[dee])
+        mask = torch.zeros(xlist[0].shape[0]).bool()
+        mask[pad_mask] = True
         return {
             'token': xlist[0],
             'PE': xlist[1],
             'DE': xlist[2],
             'ID': xlist[3],
-            'mask': pad_mask
+            'mask': mask
         }
 
 def segment_node_with_neighbor(edge_index, node_attrs=[], edge_attrs=[], pad_value=0):

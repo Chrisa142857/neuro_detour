@@ -16,22 +16,24 @@ from torch.nn.utils.rnn import pad_sequence
 
 
 ATLAS_FACTORY = ['AAL_116', 'Aicha_384', 'Gordon_333', 'Brainnetome_264', 'Shaefer_100', 'Shaefer_200', 'Shaefer_400', 'D_160']
-BOLD_FORMAT = ['.csv', '.csv', '.tsv', '.csv', '.tsv', '.tsv', '.tsv']
+BOLD_FORMAT = ['.csv', '.csv', '.tsv', '.csv', '.tsv', '.tsv', '.tsv', '.txt']
 DATAROOT = {
     'adni': '/ram/USERS/ziquanw/detour_hcp/data',
     'oasis': '/ram/USERS/ziquanw/detour_hcp/data',
     'hcpa': '/ram/USERS/bendan/ACMLab_DATA',
-    'ukb': '/ram/USERS/ziquanw/data'
+    'ukb': '/ram/USERS/ziquanw/data',
+    'hcpya': '/ram/USERS/ziquanw/data',
 }
 DATANAME = {
     'adni': 'ADNI_BOLD_SC',
     'oasis': 'OASIS_BOLD_SC',
     'hcpa': 'HCP-A-SC_FC',
-    'ukb': 'UKB-SC-FC'
+    'ukb': 'UKB-SC-FC',
+    'hcpya': 'HCP-YA-SC_FC',
 }
 LABEL_NAME_P = {
     'adni': -1, 'oasis': -1, 
-    'hcpa': 1, 
+    'hcpa': 1, 'hcpya': 1, 
     'ukb': 2,
 }
 
@@ -198,7 +200,16 @@ class NeuroNetworkDataset(Dataset):
                 for key in new_data:
                     data[key] = new_data[key]
             self.cached_data[index] = Data.from_dict(data)
-        return self.cached_data[index]
+        data = self.cached_data[index]
+        if not hasattr(data, 'adj_fc'):
+            adj_fc = torch.zeros(data.x.shape[0], data.x.shape[0]).bool()
+            adj_fc[data.edge_index_fc[0], data.edge_index_fc[1]] = True
+            adj_sc = torch.zeros(data.x.shape[0], data.x.shape[0]).bool()
+            adj_sc[data.edge_index_sc[0], data.edge_index_sc[1]] = True
+            setattr(data, 'adj_fc', adj_fc[None])
+            setattr(data, 'adj_sc', adj_sc[None])
+        self.cached_data[index] = data
+        return data
 
     def __len__(self):
         return len(self.subject)
@@ -275,7 +286,12 @@ def Schaefer_SCname_match_FCname(scn, fcn):
     pass
 
 if __name__ == '__main__':
-    tl, vl, ds = dataloader_generator(dname='ukb', atlas_name='AAL_116')
-    # for data in tl:
-    #     print(data.x.shape)
-        
+    from data_detour import NeuroDetourNode, NeuroDetourEdge
+    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='Gordon_333', fc_winsize=500)#, transform=NeuroDetourNode(k=5, node_num=333)
+    for data in tl:
+        print(data)
+        # adjs = torch.tensor_split(data.edge_index_sc, data.batch.bincount().cumsum(0), dim=1)[1:]
+        # print([adj.shape for adj in adjs])
+        # print(data.token.shape, data.mask.shape)
+        # print(data.mask.max(), data.mask[:400].tolist())
+        exit()

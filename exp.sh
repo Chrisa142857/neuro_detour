@@ -72,3 +72,21 @@ python trainval.py --models braingnn --classifier gcn --dataname hcpa --bold_win
 dt=$(date '+%d-%m-%Y-%H-%M-%S');
 python trainval.py --models braingnn --classifier gcn --dataname ukb --bold_winsize 500 --device cuda:2 > logs/braingnn_gcn_ukb_statfc_aal_${dt}.log
 
+dt=$(date '+%d-%m-%Y-%H-%M-%S');
+python trainval.py --models braingnn --classifier gcn --dataname ukb --bold_winsize 100 --device cuda:2 > logs/braingnn_gcn_ukb_dynfc_aal_${dt}.log
+
+
+
+dt=$(date '+%d-%m-%Y-%H-%M-%S');
+python trainval.py --models braingnn --classifier gcn --dataname ukb --bold_winsize 500 --device cuda:1 --atlas Gordon_333 > logs/braingnn_gcn_ukb_statfc_gordon_${dt}.log
+
+dt=$(date '+%d-%m-%Y-%H-%M-%S');
+python trainval.py --models braingnn --classifier gcn --dataname ukb --bold_winsize 100 --device cuda:3 --atlas Gordon_333 > logs/braingnn_gcn_ukb_dynfc_gordon_${dt}.log
+
+
+dt=$(date '+%d-%m-%Y-%H-%M-%S');
+python trainval.py --models bnt --classifier gcn --dataname ukb --bold_winsize 500 --device cuda:0 > logs/bnt_gcn_ukb_statfc_aal_${dt}.log
+
+dt=$(date '+%d-%m-%Y-%H-%M-%S');
+python trainval.py --models bnt --classifier gcn --dataname ukb --bold_winsize 100 --device cuda:2 > logs/bnt_gcn_ukb_dynfc_aal_${dt}.log
+
