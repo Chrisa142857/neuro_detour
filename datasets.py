@@ -6,13 +6,13 @@ from sklearn.model_selection import KFold
 from torch_geometric.loader import DataLoader
 import pandas as pd
 import numpy as np
-import networkx as nx
+# import networkx as nx
 from tqdm import tqdm, trange
-from statannotations.Annotator import Annotator
-from scipy.stats import ttest_rel, ttest_ind
+# from statannotations.Annotator import Annotator
+# from scipy.stats import ttest_rel, ttest_ind
 from torch_geometric.data import Data
-from torch_geometric.utils import remove_self_loops, add_self_loops
-from torch.nn.utils.rnn import pad_sequence
+# from torch_geometric.utils import remove_self_loops, add_self_loops
+# from torch.nn.utils.rnn import pad_sequence
 
 
 ATLAS_FACTORY = ['AAL_116', 'Aicha_384', 'Gordon_333', 'Brainnetome_264', 'Shaefer_100', 'Shaefer_200', 'Shaefer_400', 'D_160']
@@ -287,11 +287,75 @@ def Schaefer_SCname_match_FCname(scn, fcn):
 
 if __name__ == '__main__':
     from data_detour import NeuroDetourNode, NeuroDetourEdge
-    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='Gordon_333', fc_winsize=500)#, transform=NeuroDetourNode(k=5, node_num=333)
-    for data in tl:
-        print(data)
-        # adjs = torch.tensor_split(data.edge_index_sc, data.batch.bincount().cumsum(0), dim=1)[1:]
-        # print([adj.shape for adj in adjs])
-        # print(data.token.shape, data.mask.shape)
-        # print(data.mask.max(), data.mask[:400].tolist())
-        exit()
+    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='AAL_116', fc_winsize=500, fc_th=0.9)#, transform=NeuroDetourNode(k=5, node_num=333)
+    # sc_list = []
+    # fc_list = {}
+    # for data in tqdm(ds):
+    #     sc_list.append(data.adj_sc[0])
+    #     if data.y not in fc_list: fc_list[data.y] = []
+    #     fc_list[data.y].append(data.adj_fc[0])
+    # sc_list = torch.stack(sc_list).float()
+    # # import seaborn as sns
+    # import matplotlib.pyplot as plt
+    # plt.matshow(sc_list.mean(0))
+    # plt.colorbar()
+    # plt.savefig('sc_avg.png')
+    # plt.savefig('sc_avg.svg')
+    # plt.close()
+    # plt.matshow(sc_list.std(0))
+    # plt.colorbar()
+    # plt.savefig('sc_std.png')
+    # plt.savefig('sc_std.svg')
+    # plt.close()
+    # new_sc = ((sc_list@sc_list) > 0).float() - sc_list
+    # new_sc[new_sc<0] = 0
+    # new_sc[:, torch.arange(116), torch.arange(116)] = 0
+    # plt.matshow(new_sc.mean(0))
+    # plt.colorbar()
+    # plt.savefig('sc^2_avg.png')
+    # plt.savefig('sc^2_avg.svg')
+    # plt.close()
+    # plt.matshow(new_sc.std(0))
+    # plt.colorbar()
+    # plt.savefig('sc^2_std.png')
+    # plt.savefig('sc^2_std.svg')
+    # plt.close()
+    # new_sc = ((sc_list@sc_list@sc_list) > 0).float() - new_sc - sc_list
+    # new_sc[new_sc<0] = 0
+    # new_sc[:, torch.arange(116), torch.arange(116)] = 0
+    # plt.matshow(new_sc.mean(0))
+    # plt.colorbar()
+    # plt.savefig('sc^3_avg.png')
+    # plt.savefig('sc^3_avg.svg')
+    # plt.close()
+    # plt.matshow(new_sc.std(0))
+    # plt.colorbar()
+    # plt.savefig('sc^3_std.png')
+    # plt.savefig('sc^3_std.svg')
+    # plt.close()
+    # new_sc = ((sc_list@sc_list@sc_list@sc_list) > 0).float() - new_sc - sc_list
+    # new_sc[new_sc<0] = 0
+    # new_sc[:, torch.arange(116), torch.arange(116)] = 0
+    # plt.matshow(new_sc.mean(0))
+    # plt.colorbar()
+    # plt.savefig('sc^4_avg.png')
+    # plt.savefig('sc^4_avg.svg')
+    # plt.close()
+    # plt.matshow(new_sc.std(0))
+    # plt.colorbar()
+    # plt.savefig('sc^4_std.png')
+    # plt.savefig('sc^4_std.svg')
+    # plt.close()
+    # for l in fc_list:
+    #     # fc_list[l] = torch.stack(fc_list[l]).float()
+    #     fc_list[l][:, torch.arange(116), torch.arange(116)] = 0
+    #     plt.matshow(fc_list[l].mean(0))
+    #     plt.colorbar()
+    #     plt.savefig(f'fc_label{l}_avg.png')
+    #     plt.savefig(f'fc_label{l}_avg.svg')
+    #     plt.close()
+    #     plt.matshow(fc_list[l].std(0))
+    #     plt.colorbar()
+    #     plt.savefig(f'fc_label{l}_std.png')
+    #     plt.savefig(f'fc_label{l}_std.svg')
+    #     plt.close()

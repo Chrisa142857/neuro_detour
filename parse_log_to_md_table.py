@@ -14,6 +14,7 @@ for logf in os.listdir('logs'):
     dn = logf.split('_')[2]
     dt = ' '.join(logf.split('_')[3:]).replace('.log', '')
     dt = ''.join([i for i in dt if not i.isdigit()]).replace('-', '')
+    if 'statsc' in dt or 'dynsc' in dt: continue
     acc_avg = float(lines[0].split('Accuracy: ')[1].replace(', Std ', ''))
     acc_std = float(lines[0].split('Accuracy: ')[2])
     f1_avg = float(lines[1].split('F1 Score: ')[1].replace(', Std ', ''))

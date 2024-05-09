@@ -1,6 +1,6 @@
 from datasets import dataloader_generator
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from models import brain_net_transformer, neuro_detour, brain_gnn, brain_identity
+from models import brain_net_transformer, neuro_detour, brain_gnn, brain_identity, bolt
 from models.classifier import Classifier
 from torch_geometric.nn import GCNConv, GATConv, SAGEConv, SGConv
 from tqdm import trange, tqdm
@@ -15,6 +15,7 @@ MODEL_BANK = {
     'neurodetour': neuro_detour.DetourTransformer,
     'bnt': brain_net_transformer.BrainNetworkTransformer,
     'braingnn': brain_gnn.Network,
+    'bolt': bolt.get_BolT,
     'none': brain_identity.Identity
 }
 CLASSIFIER_BANK = {
@@ -76,18 +77,18 @@ def main():
     else:
         input_dim = args.bold_winsize
     # else:
-    if args.models == 'neurodetour':
-        if args.detour_type == 'node':
-            transform = NeuroDetourNode(k=args.detour_k, node_num=node_sz)
-        elif args.detour_type == 'edge':
-            transform = NeuroDetourEdge(k=args.detour_k, node_num=node_sz)
-        if isinstance(transform, NeuroDetourEdge):
-            input_dim = input_dim*2
-            dek = transform.k
-            pek = transform.PEK*2
-        else:
-            pek = transform.PEK
-            dek = transform.k * 4
+    # if args.models == 'neurodetour':
+    #     if args.detour_type == 'node':
+    #         transform = NeuroDetourNode(k=args.detour_k, node_num=node_sz)
+    #     elif args.detour_type == 'edge':
+    #         transform = NeuroDetourEdge(k=args.detour_k, node_num=node_sz)
+    #     if isinstance(transform, NeuroDetourEdge):
+    #         input_dim = input_dim*2
+    #         dek = transform.k
+    #         pek = transform.PEK*2
+    #     else:
+    #         pek = transform.PEK
+    #         dek = transform.k * 4
 
     for i in range(5):
         train_loader, val_loader, dataset = dataloader_generator(batch_size=args.batch_size, nfold=i, dataset=dataset, 
@@ -142,6 +143,7 @@ def train(model, classifier, device, loader, optimizer):
     loss_fn = nn.CrossEntropyLoss()
     # for step, batch in enumerate(tqdm(loader, desc="Iteration")):
     for step, batch in enumerate(loader):
+        optimizer.zero_grad()
         batch = batch.to(device)
         feat = model(batch)
         edge_index = batch.edge_index
@@ -150,7 +152,8 @@ def train(model, classifier, device, loader, optimizer):
             feat, edge_index, batchid = feat
         y = classifier(feat, edge_index, batchid)
         loss = loss_fn(y, batch.y)
-        optimizer.zero_grad()
+        if hasattr(model, 'loss'):
+            loss = loss + model.loss
         loss.backward()
         optimizer.step()
         losses.append(loss.detach().cpu().item())

@@ -56,20 +56,20 @@ class TransPoolingEncoder(nn.Module):
 
 class BrainNetworkTransformer(BaseModel):
     
-    def __init__(self, node_sz, out_channel, pos_encoding=None, pos_embed_dim=360, hidden_size=1024, **kargs):
+    def __init__(self, node_sz, in_channel, out_channel, pos_encoding=None, pos_embed_dim=360, hidden_size=1024, **kargs):
 
         super().__init__()
         hidden_size = hidden_size
         self.node_sz = node_sz
 
         self.attention_list = nn.ModuleList()
-        forward_dim = node_sz
+        forward_dim = in_channel
 
         self.pos_encoding = pos_encoding
         if self.pos_encoding == 'identity':
             self.node_identity = nn.Parameter(torch.zeros(
                 node_sz, pos_embed_dim), requires_grad=True)
-            forward_dim = node_sz + pos_embed_dim
+            forward_dim = in_channel + pos_embed_dim
             nn.init.kaiming_normal_(self.node_identity)
 
         sizes = [out_channel//8, out_channel//8]

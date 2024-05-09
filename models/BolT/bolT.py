@@ -8,16 +8,16 @@ from einops import rearrange
 
 # import transformers
 
-from BolT.bolTransformerBlock import BolTransformerBlock
+from .bolTransformerBlock import BolTransformerBlock
 
 
 class BolT(nn.Module):
-    def __init__(self, hyperParams, details):
+    def __init__(self, hyperParams, in_channel, out_channel, node_sz):
 
         super().__init__()
 
         dim = hyperParams.dim
-        nOfClasses = details.nOfClasses
+        # nOfClasses = details.nOfClasses
 
         self.hyperParams = hyperParams
 
@@ -59,14 +59,15 @@ class BolT(nn.Module):
 
 
         self.encoder_postNorm = nn.LayerNorm(dim)
-        self.classifierHead = nn.Linear(dim, nOfClasses)
+        self.classifierHead = nn.Linear(in_channel, out_channel)
 
         # for token painting
         self.last_numberOfWindows = None
 
         # for analysis only
         self.tokens = []
-
+        self.node_sz = node_sz
+        self.in_channel = in_channel
 
         self.initializeWeights()
 
@@ -115,7 +116,7 @@ class BolT(nn.Module):
         return macs, np.sum(macs) * 2 # FLOPS = 2 * MAC
 
 
-    def forward(self, roiSignals, analysis=False):
+    def forward(self, batch):
         
         """
             Input : 
@@ -130,7 +131,9 @@ class BolT(nn.Module):
 
 
         """
-
+        analysis = False
+        bsz = batch.batch.max() + 1
+        roiSignals = batch.x.view(bsz, self.node_sz, self.in_channel)
 
         roiSignals = roiSignals.permute((0,2,1))
 
@@ -158,14 +161,14 @@ class BolT(nn.Module):
         """
 
         cls = self.encoder_postNorm(cls)
-
-        if(self.hyperParams.pooling == "cls"):
-            logits = self.classifierHead(cls.mean(dim=1)) # (batchSize, #ofClasses)
-        elif(self.hyperParams.pooling == "gmp"):
-            logits = self.classifierHead(roiSignals.mean(dim=1))
+        logits = self.classifierHead(roiSignals.transpose(-2, -1)).reshape(bsz*self.node_sz, -1)
+        
+        # if(self.hyperParams.pooling == "cls"):
+        #     logits = self.classifierHead(cls.mean(dim=1)) # (batchSize, #ofClasses)
+        # elif(self.hyperParams.pooling == "gmp"):
+        #     logits = self.classifierHead(roiSignals.mean(dim=1))
 
         torch.cuda.empty_cache()
-
-        return logits, cls
+        return logits#, cls
 
 

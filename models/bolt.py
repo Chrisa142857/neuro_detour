@@ -2,7 +2,7 @@
 from .BolT.bolT import BolT
 import copy
 
-def get_BolT(node_sz):
+def get_BolT(node_sz, out_channel, in_channel, **kargs):
     
     hyperParams = {
 
@@ -37,7 +37,7 @@ def get_BolT(node_sz):
     }
     hyperParams = Option(hyperParams)
 
-    return BolT(hyperParams)
+    return BolT(hyperParams, in_channel, out_channel, node_sz)
 
 
 class Option(object):

@@ -5,7 +5,7 @@ from torch import nn
 from einops import rearrange, repeat
 from timm.models.layers import trunc_normal_
 
-from Models.BolT.util import windowBoldSignal
+from .util import windowBoldSignal
 
 
 def max_neg_value(tensor):
