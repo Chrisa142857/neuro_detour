@@ -1,6 +1,6 @@
 from datasets import dataloader_generator
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from models import brain_net_transformer, neuro_detour, brain_gnn, brain_identity, bolt
+from models import brain_net_transformer, neuro_detour, brain_gnn, brain_identity, bolt, graphormer, nagphormer
 from models.classifier import Classifier
 from torch_geometric.nn import GCNConv, GATConv, SAGEConv, SGConv
 from tqdm import trange, tqdm
@@ -16,6 +16,8 @@ MODEL_BANK = {
     'bnt': brain_net_transformer.BrainNetworkTransformer,
     'braingnn': brain_gnn.Network,
     'bolt': bolt.get_BolT,
+    'graphormer': graphormer.Graphormer,
+    'nagphormer': nagphormer.TransformerModel,
     'none': brain_identity.Identity
 }
 CLASSIFIER_BANK = {
@@ -24,6 +26,15 @@ CLASSIFIER_BANK = {
     'gat': GATConv,
     'sage': SAGEConv,
     'sgc': SGConv
+}
+DATA_TRANSFORM = {
+    'neurodetour': None,
+    'bnt': None,
+    'braingnn': None,
+    'bolt': None,
+    'graphormer': graphormer.ShortestDistance(),
+    'nagphormer': nagphormer.NAGdataTransform(),
+    'none': None
 }
 ATLAS_ROI_N = {
     'AAL_116': 116,
@@ -55,8 +66,8 @@ def main():
     parser.add_argument('--decay', type=float, default=0,
                         help='Weight decay (default: 0)')
     parser.add_argument('--device', type=str, default = 'cuda:0')
-    parser.add_argument('--detour_type', type=str, default = 'node')
-    parser.add_argument('--detour_k', type=int, default = 4)
+    # parser.add_argument('--detour_type', type=str, default = 'node')
+    # parser.add_argument('--detour_k', type=int, default = 4)
     args = parser.parse_args()
     print(args)
     device = args.device
@@ -76,25 +87,13 @@ def main():
         input_dim = node_sz
     else:
         input_dim = args.bold_winsize
-    # else:
-    # if args.models == 'neurodetour':
-    #     if args.detour_type == 'node':
-    #         transform = NeuroDetourNode(k=args.detour_k, node_num=node_sz)
-    #     elif args.detour_type == 'edge':
-    #         transform = NeuroDetourEdge(k=args.detour_k, node_num=node_sz)
-    #     if isinstance(transform, NeuroDetourEdge):
-    #         input_dim = input_dim*2
-    #         dek = transform.k
-    #         pek = transform.PEK*2
-    #     else:
-    #         pek = transform.PEK
-    #         dek = transform.k * 4
+    transform = DATA_TRANSFORM[args.models]
 
     for i in range(5):
         train_loader, val_loader, dataset = dataloader_generator(batch_size=args.batch_size, nfold=i, dataset=dataset, 
                                                                  node_attr=args.node_attr, adj_type=args.adj_type, transform=transform, dname=args.dataname,
                                                                  fc_winsize=args.bold_winsize, atlas_name=args.atlas)
-        model = MODEL_BANK[args.models](node_sz=node_sz, out_channel=hiddim, in_channel=input_dim, dek=dek, pek=pek, detour_type=args.detour_type, batch_size=args.batch_size, device=device).to(device)
+        model = MODEL_BANK[args.models](node_sz=node_sz, out_channel=hiddim, in_channel=input_dim, batch_size=args.batch_size, device=device).to(device)
         classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=nclass, node_sz=node_sz if args.models!='braingnn' else braingnn_nodesz(node_sz, model.ratio)).to(device)
         optimizer = optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=args.lr, weight_decay=args.decay) 
         # print(optimizer)

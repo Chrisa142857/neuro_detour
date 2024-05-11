@@ -285,18 +285,35 @@ def CORRECT_ATLAS_NAME(n):
 def Schaefer_SCname_match_FCname(scn, fcn):
     pass
 
+def tsne_spdmat(mats):
+    tril_ind = torch.tril_indices(mats.shape[1], mats.shape[2])
+    X = mats[:, tril_ind[0], tril_ind[1]]
+    X_embedded = TSNE(n_components=2, random_state=142857).fit_transform(X.numpy())
+    return X_embedded
+
 if __name__ == '__main__':
-    from data_detour import NeuroDetourNode, NeuroDetourEdge
-    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='AAL_116', fc_winsize=500, fc_th=0.9)#, transform=NeuroDetourNode(k=5, node_num=333)
-    # sc_list = []
-    # fc_list = {}
-    # for data in tqdm(ds):
-    #     sc_list.append(data.adj_sc[0])
-    #     if data.y not in fc_list: fc_list[data.y] = []
-    #     fc_list[data.y].append(data.adj_fc[0])
-    # sc_list = torch.stack(sc_list).float()
-    # # import seaborn as sns
-    # import matplotlib.pyplot as plt
+    from sklearn.manifold import TSNE
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import random
+    # from data_detour import NeuroDetourNode, NeuroDetourEdge
+    # from models.graphormer import ShortestDistance
+    # from models.nagphormer import NAGdataTransform
+    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='AAL_116', fc_winsize=500)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
+    # for data in tqdm(tl):
+    #     print(data.new_feature.shape)
+    #     exit()
+    sc_list = []
+    fc_list = {}
+    for data in tqdm(ds):
+        sc_list.append(data.adj_sc[0])
+        if data.y not in fc_list: fc_list[data.y] = []
+        fc_list[data.y].append(data.adj_fc[0])
+    subis = list(range(min([len(fc_list[l]) for l in fc_list])))
+    random.shuffle(subis)
+    subi = subis[:10]
+    sc_list = torch.stack(sc_list).float()
+    sc_list[:, torch.arange(116), torch.arange(116)] = 0
     # plt.matshow(sc_list.mean(0))
     # plt.colorbar()
     # plt.savefig('sc_avg.png')
@@ -346,16 +363,53 @@ if __name__ == '__main__':
     # plt.savefig('sc^4_std.png')
     # plt.savefig('sc^4_std.svg')
     # plt.close()
-    # for l in fc_list:
-    #     # fc_list[l] = torch.stack(fc_list[l]).float()
-    #     fc_list[l][:, torch.arange(116), torch.arange(116)] = 0
-    #     plt.matshow(fc_list[l].mean(0))
+    # for i in subi:
+    #     plt.matshow(sc_list[i])
     #     plt.colorbar()
-    #     plt.savefig(f'fc_label{l}_avg.png')
-    #     plt.savefig(f'fc_label{l}_avg.svg')
+    #     plt.savefig(f'figs/sc_sub{i}.png')
+    #     plt.savefig(f'figs/sc_sub{i}.svg')
     #     plt.close()
-    #     plt.matshow(fc_list[l].std(0))
-    #     plt.colorbar()
-    #     plt.savefig(f'fc_label{l}_std.png')
-    #     plt.savefig(f'fc_label{l}_std.svg')
-    #     plt.close()
+    for l in fc_list:
+        if l == 0: continue
+        fc_list[l] = torch.stack(fc_list[l]).float()
+        fc_list[l][:, torch.arange(116), torch.arange(116)] = 0
+        for i in subi:
+            # plt.matshow(fc_list[l].mean(0))
+            plt.matshow(fc_list[l][i])
+            plt.colorbar()
+            plt.savefig(f'figs/fc_sub{i}_label{l}.png')
+            plt.savefig(f'figs/fc_sub{i}_label{l}.svg')
+            plt.close()
+
+    # scs = tsne_spdmat(sc_list)
+    # fig, axes = plt.subplots(2, 3, sharey=True, sharex=True)
+    # axes = axes.reshape(-1)
+    # sns.scatterplot(x=scs[:, 0], y=scs[:, 1], ax=axes[0])
+    # sns.displot(x=scs[:, 0], y=scs[:, 1], kind="kde")
+    # plt.xlim([])
+    # plt.ylim([])
+    # plt.savefig(f'figs/sc_tsne.png')
+    # plt.savefig(f'figs/sc_tsne.svg')
+    # plt.close()
+    # for li, l in enumerate(fc_list):
+    #     fcs = tsne_spdmat(fc_list[l])
+    #     sns.scatterplot(x=fcs[:, 0], y=fcs[:, 1], ax=axes[li+1])
+    #     axes[li+1].set_title(f'label{l}')
+        # sns.displot(x=fcs[:, 0], y=fcs[:, 1], kind="kde")
+        # plt.savefig(f'figs/fc_label{l}_tsne.png')
+        # plt.savefig(f'figs/fc_label{l}_tsne.svg')
+        # plt.close()
+        # plt.matshow(fc_list[l].mean(0))
+        # plt.colorbar()
+        # plt.savefig(f'figs/fc_label{l}_avg.png')
+        # plt.savefig(f'figs/fc_label{l}_avg.svg')
+        # plt.close()
+        # plt.matshow(fc_list[l].std(0))
+        # plt.colorbar()
+        # plt.savefig(f'figs/fc_label{l}_std.png')
+        # plt.savefig(f'figs/fc_label{l}_std.svg')
+        # plt.close()
+
+    # plt.savefig(f'figs/scfc_tsne.png')
+    # plt.savefig(f'figs/scfc_tsne.svg')
+    # plt.close()

@@ -12,7 +12,6 @@ class DetourTransformer(nn.Module):
         node_sz: int=116,
         in_channel: Union[int, Tuple[int, int]] = 10,
         out_channel: int = 10,
-        heads: int = 2,
         concat: bool = False,
         dek: int = 4,
         pek: int = 10,
@@ -25,6 +24,8 @@ class DetourTransformer(nn.Module):
         device='cuda:0',
         *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        
+        heads: int = 2 if node_sz % 2 == 0 else 3
         self.detour_type = detour_type
         self.nlayer = nlayer
         self.node_sz = node_sz
