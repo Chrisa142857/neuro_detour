@@ -1,4 +1,4 @@
-import os, torch
+import os, torch, difflib
 from scipy.io import loadmat
 from torch.utils.data import Dataset
 from pathlib import Path
@@ -42,10 +42,19 @@ LABEL_REMAP = {
     'oasis': {'CN': 'CN', 'AD': 'AD'},
 }
 
-def dataloader_generator(batch_size=4, num_workers=8, nfold=0, total_fold=5, dataset=None, **kargs):
+def dataloader_generator(batch_size=4, num_workers=8, nfold=0, total_fold=5, dataset=None, testset='None', **kargs):
     kf = KFold(n_splits=total_fold, shuffle=True, random_state=142857)
     if dataset is None:
         dataset = NeuroNetworkDataset(**kargs)
+    if isinstance(testset, str):
+        if testset != 'None':
+            if testset != 'oasis' and testset != 'adni' and kargs['dname'] != 'adni' and kargs['dname'] != 'oasis':
+                del kargs['dname']
+                testset = NeuroNetworkDataset(dname=testset, **kargs)
+            else:
+                del kargs['atlas_name'], kargs['dname']
+                atlas_name = {'adni': 'AAL_116', 'oasis': 'D_160'}
+                testset = NeuroNetworkDataset(dname=testset, atlas_name=atlas_name[testset], **kargs)
     all_subjects = dataset.data_subj
     train_index, index = list(kf.split(all_subjects))[nfold]
     train_subjects = [all_subjects[i] for i in train_index]
@@ -58,7 +67,16 @@ def dataloader_generator(batch_size=4, num_workers=8, nfold=0, total_fold=5, dat
     valid_dataset = torch.utils.data.Subset(dataset, data)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=False)
     loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-    return train_loader, loader, dataset
+    if testset == 'None':
+        return train_loader, loader, dataset
+    else:
+        _, index = list(kf.split(testset.data_subj))[nfold]
+        subjects = [testset.data_subj[i] for i in index]
+        data = [di for di, subj in enumerate(testset.subject) if subj in subjects]
+        print(f'Fold {nfold + 1}, Test {len(subjects)} subjects, len(test_data)={len(data)}')
+        test_dataset = torch.utils.data.Subset(testset, data)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        return train_loader, loader, dataset, test_loader, testset
 
 class NeuroNetworkDataset(Dataset):
 
@@ -163,6 +181,8 @@ class NeuroNetworkDataset(Dataset):
                 
                 torch.save(self.cached_data, f'data/{data_dir}/{processed_fn}.pt')
             self.cached_data = torch.load(f'data/{data_dir}/{processed_fn}.pt')
+        for _ in tqdm(self, desc='Preloading'):
+            pass
         
     def __getitem__(self, index):
         if self.cached_data[index] is None:
@@ -199,17 +219,18 @@ class NeuroNetworkDataset(Dataset):
                 new_data = self.transform(Data.from_dict(data))
                 for key in new_data:
                     data[key] = new_data[key]
+                    
+            adj_fc = torch.zeros(x.shape[0], x.shape[0]).bool()
+            adj_fc[edge_index_fc[0], edge_index_fc[1]] = True
+            adj_sc = torch.zeros(x.shape[0], x.shape[0]).bool()
+            adj_sc[edge_index_sc[0], edge_index_sc[1]] = True
+            adj_fc[torch.arange(self.node_num), torch.arange(self.node_num)] = True
+            adj_sc[torch.arange(self.node_num), torch.arange(self.node_num)] = True
+            data['adj_fc'] = adj_fc[None]
+            data['adj_sc'] = adj_sc[None]
+            
             self.cached_data[index] = Data.from_dict(data)
-        data = self.cached_data[index]
-        if not hasattr(data, 'adj_fc'):
-            adj_fc = torch.zeros(data.x.shape[0], data.x.shape[0]).bool()
-            adj_fc[data.edge_index_fc[0], data.edge_index_fc[1]] = True
-            adj_sc = torch.zeros(data.x.shape[0], data.x.shape[0]).bool()
-            adj_sc[data.edge_index_sc[0], data.edge_index_sc[1]] = True
-            setattr(data, 'adj_fc', adj_fc[None])
-            setattr(data, 'adj_sc', adj_sc[None])
-        self.cached_data[index] = data
-        return data
+        return self.cached_data[index]
 
     def __len__(self):
         return len(self.subject)
@@ -282,8 +303,28 @@ def CORRECT_ATLAS_NAME(n):
     if 'Shaefer_' in n: return n.replace('Shaefer', 'Schaefer')
     return n
 
-def Schaefer_SCname_match_FCname(scn, fcn):
-    pass
+def Schaefer_SCname_match_FCname(scns, fcns):
+    '''
+    TODO: Align Schaefer atlas region name of SC and FC
+    '''
+    match = []
+    def get_overlap(s1, s2):
+        s = difflib.SequenceMatcher(None, s1, s2)
+        pos_a, pos_b, size = s.find_longest_match(0, len(s1), 0, len(s2)) 
+        return s1[pos_a:pos_a+size]
+    
+    for fcn in fcns:
+        fcn = fcn.replace('17Networks_', '')
+        fcn_split = fcn.split('_')
+        sc_overlap_len = []
+        for scn in scns:
+            scn_split = scn.split('_')
+            if scn_split[0] != fcn_split[0] or scn_split[-1] != fcn_split[-1]:
+                continue
+            sc_overlap_len.append(sum([len(get_overlap(scn_split[i], fcn_split[i])) for i in range(1, len(scn_split)-1)]))
+        match.append()
+
+    return match
 
 def tsne_spdmat(mats):
     tril_ind = torch.tril_indices(mats.shape[1], mats.shape[2])
@@ -299,10 +340,10 @@ if __name__ == '__main__':
     # from data_detour import NeuroDetourNode, NeuroDetourEdge
     # from models.graphormer import ShortestDistance
     # from models.nagphormer import NAGdataTransform
-    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='AAL_116', fc_winsize=500)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
-    # for data in tqdm(tl):
-    #     print(data.new_feature.shape)
-    #     exit()
+    tl, vl, ds, testl, testds = dataloader_generator(dname='oasis', atlas_name='D_160', node_attr='FC', testset='adni', fc_winsize=500)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
+    for data in tqdm(testl):
+        print(data.x.shape)
+        exit()
     sc_list = []
     fc_list = {}
     for data in tqdm(ds):

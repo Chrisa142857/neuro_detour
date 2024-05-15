@@ -64,36 +64,36 @@ class DetourTransformer(nn.Module):
         self.mask_heldout = torch.zeros(batch_size, node_sz, node_sz) - torch.inf
         self.mask_heldout = self.mask_heldout.to(device)
         self.fcsc_loss = nn.MSELoss()
-        self.loss = 0
+        # self.loss = 0
 
     def forward(self, data):
-        self.loss = 0
+        # self.loss = 0
         node_feature = data.x
         node_feature = self.lin_first(node_feature)
-        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), data.x.shape[1])
-        node_feature_fc = node_feature
+        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), self.in_channel)
+        # node_feature_fc = node_feature
 
         adj = data.adj_sc
         adj_fc = data.adj_fc
-        adj[:, torch.arange(self.node_sz), torch.arange(self.node_sz)] = True
-        adj_fc[:, torch.arange(self.node_sz), torch.arange(self.node_sz)] = True
         org_adj = adj
         multi_mask = []
         for _ in range(self.heads):
+            if self.mask_heldout.shape[1] != adj.shape[1]:
+                self.mask_heldout = torch.zeros(self.mask_heldout.shape[0], adj.shape[1], adj.shape[2], device=adj.device) - torch.inf
             mask = self.mask_heldout[:len(adj)]
             mask[torch.logical_and(adj, adj_fc)] = 0
             adj = (adj.float() @ org_adj.float()) > 0
             multi_mask.append(mask)
         multi_mask = torch.cat(multi_mask)
-        mask_fc = self.mask_heldout[:len(adj_fc)]
-        mask_fc[adj_fc] = 0
-        mask_fc = mask_fc.repeat(self.heads, 1, 1)
+        # mask_fc = self.mask_heldout[:len(adj_fc)]
+        # mask_fc[adj_fc] = 0
+        # mask_fc = mask_fc.repeat(self.heads, 1, 1)
         for i in range(self.nlayer):
             node_feature = self.net[i](node_feature, mask=multi_mask)
-            node_feature_fc = self.net_fc[i](node_feature_fc, mask=mask_fc)
-            self.loss = self.loss + self.fcsc_loss(node_feature_fc, node_feature)
-        if not self.training:
-            node_feature = node_feature_fc
+        #     node_feature_fc = self.net_fc[i](node_feature_fc, mask=mask_fc)
+        #     self.loss = self.loss + self.fcsc_loss(node_feature_fc, node_feature)
+        # if not self.training:
+        #     node_feature = node_feature_fc
         return self.lin_in(node_feature.reshape(node_feature.shape[0] * node_feature.shape[1], self.in_channel))
 
 
@@ -152,7 +152,7 @@ class DetourTransformerSingleFC(nn.Module):
         self.loss = 0
         node_feature = data.x
         node_feature = self.lin_first(node_feature)
-        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), data.x.shape[1])
+        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), self.in_channel)
 
         adj_fc = data.adj_fc
         adj_fc[:, torch.arange(self.node_sz), torch.arange(self.node_sz)] = True
@@ -221,7 +221,7 @@ class DetourTransformerSingleSC(nn.Module):
         self.loss = 0
         node_feature = data.x
         node_feature = self.lin_first(node_feature)
-        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), data.x.shape[1])
+        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), self.in_channel)
 
         adj = data.adj_sc
         adj_fc = data.adj_fc

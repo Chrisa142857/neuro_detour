@@ -19,7 +19,7 @@ class Transformer(nn.Module):
         *args, **kwargs) -> None:
         super().__init__()
         
-        heads: int = 2 if node_sz % 2 == 0 else 3
+        heads: int = 2 if in_channel % 2 == 0 else 3
         self.nlayer = nlayer
         self.node_sz = node_sz
 

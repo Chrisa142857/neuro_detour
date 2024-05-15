@@ -21,12 +21,15 @@ class Graphormer(nn.Module):
         device='cuda:0',
         *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        org_in_channel = in_channel
+        if in_channel % heads != 0:
+            in_channel = in_channel  + heads - (in_channel % heads)
         self.detour_type = detour_type
         self.nlayer = nlayer
         self.node_sz = node_sz
 
         self.lin_first = nn.Sequential(
-            nn.Linear(in_channel, in_channel), 
+            nn.Linear(org_in_channel, in_channel), 
             nn.BatchNorm1d(in_channel), 
             nn.LeakyReLU(),
         )
@@ -40,8 +43,8 @@ class Graphormer(nn.Module):
             num_layers=nlayer,
             norm=None#nn.LayerNorm(in_channel)
         )
-        num_spatial = 11
-        max_degree = node_sz
+        num_spatial = 100
+        max_degree = node_sz+1
         self.deg_embedding = nn.Embedding(max_degree, in_channel)
         self.spd_embedding = nn.Embedding(num_spatial, heads, padding_idx=0)
 
@@ -54,15 +57,16 @@ class Graphormer(nn.Module):
         self.loss = 0
         node_feature = data.x
         node_feature = self.lin_first(node_feature)
-        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), data.x.shape[1])
+        node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), self.in_channel)
         node_feature = node_feature + self.deg_embedding(data.adj_fc.sum(1))
         spd_dist = data.spd_dist.long()
-        spd_mask = spd_dist == -1
+        spd_mask = spd_dist < 0
         spd_dist[spd_mask] = 0
         att_mask = self.spd_embedding(spd_dist)
         att_mask[spd_mask, :] = -1
         att_mask = torch.cat([att_mask[:, :, :, i] for i in range(self.heads)])
         node_feature = self.net(node_feature, mask=att_mask)
+
         return self.lin_in(node_feature.view(node_feature.shape[0] * node_feature.shape[1], self.in_channel))
 
 

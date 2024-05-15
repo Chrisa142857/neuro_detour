@@ -59,7 +59,12 @@ class BolT(nn.Module):
 
 
         self.encoder_postNorm = nn.LayerNorm(dim)
-        self.classifierHead = nn.Linear(in_channel, out_channel)
+        out_in_channel = in_channel 
+        if in_channel == 160:
+            out_in_channel = 156
+        elif in_channel == 333:
+            out_in_channel = 332
+        self.outputHead = nn.Linear(out_in_channel, out_channel)
 
         # for token painting
         self.last_numberOfWindows = None
@@ -133,7 +138,7 @@ class BolT(nn.Module):
         """
         analysis = False
         bsz = batch.batch.max() + 1
-        roiSignals = batch.x.view(bsz, self.node_sz, self.in_channel)
+        roiSignals = batch.x.view(bsz, batch.ptr[1], self.in_channel)
 
         roiSignals = roiSignals.permute((0,2,1))
 
@@ -161,13 +166,8 @@ class BolT(nn.Module):
         """
 
         cls = self.encoder_postNorm(cls)
-        logits = self.classifierHead(roiSignals.transpose(-2, -1)).reshape(bsz*self.node_sz, -1)
+        logits = self.outputHead(roiSignals.transpose(-2, -1)).reshape(bsz*batch.ptr[1], -1)
         
-        # if(self.hyperParams.pooling == "cls"):
-        #     logits = self.classifierHead(cls.mean(dim=1)) # (batchSize, #ofClasses)
-        # elif(self.hyperParams.pooling == "gmp"):
-        #     logits = self.classifierHead(roiSignals.mean(dim=1))
-
         torch.cuda.empty_cache()
         return logits#, cls
 

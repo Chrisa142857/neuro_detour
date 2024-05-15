@@ -100,7 +100,7 @@ class BrainNetworkTransformer(BaseModel):
         #     nn.LeakyReLU(),
         #     nn.Linear(32, nclass)
         # )
-        self.loss_fn = nn.CrossEntropyLoss()
+        # self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, batch: Data, label=None):
         node_feature = batch.x.view(batch.batch.max()+1, len(torch.where(batch.batch==0)[0]), batch.x.shape[1])
@@ -138,20 +138,20 @@ class BrainNetworkTransformer(BaseModel):
         """
         return self.dec.get_cluster_centers()
 
-    def loss(self, assignments):
-        """
-        Compute KL loss for the given assignments. Note that not all encoders contain a pooling layer.
-        Inputs: assignments: [batch size, number of clusters]
-        Output: KL loss
-        """
-        decs = list(
-            filter(lambda x: x.is_pooling_enabled(), self.attention_list))
-        assignments = list(filter(lambda x: x is not None, assignments))
-        loss_all = None
+    # def loss(self, assignments):
+    #     """
+    #     Compute KL loss for the given assignments. Note that not all encoders contain a pooling layer.
+    #     Inputs: assignments: [batch size, number of clusters]
+    #     Output: KL loss
+    #     """
+    #     decs = list(
+    #         filter(lambda x: x.is_pooling_enabled(), self.attention_list))
+    #     assignments = list(filter(lambda x: x is not None, assignments))
+    #     loss_all = None
 
-        for index, assignment in enumerate(assignments):
-            if loss_all is None:
-                loss_all = decs[index].loss(assignment)
-            else:
-                loss_all += decs[index].loss(assignment)
-        return loss_all
+    #     for index, assignment in enumerate(assignments):
+    #         if loss_all is None:
+    #             loss_all = decs[index].loss(assignment)
+    #         else:
+    #             loss_all += decs[index].loss(assignment)
+    #     return loss_all
