@@ -48,13 +48,13 @@ def dataloader_generator(batch_size=4, num_workers=8, nfold=0, total_fold=5, dat
         dataset = NeuroNetworkDataset(**kargs)
     if isinstance(testset, str):
         if testset != 'None':
-            if testset != 'oasis' and testset != 'adni' and kargs['dname'] != 'adni' and kargs['dname'] != 'oasis':
-                del kargs['dname']
-                testset = NeuroNetworkDataset(dname=testset, **kargs)
-            else:
-                del kargs['atlas_name'], kargs['dname']
-                atlas_name = {'adni': 'AAL_116', 'oasis': 'D_160'}
-                testset = NeuroNetworkDataset(dname=testset, atlas_name=atlas_name[testset], **kargs)
+            # if testset != 'oasis' and testset != 'adni' and kargs['dname'] != 'adni' and kargs['dname'] != 'oasis':
+            #     del kargs['dname']
+            #     testset = NeuroNetworkDataset(dname=testset, **kargs)
+            # else:
+            del kargs['atlas_name'], kargs['dname']
+            atlas_name = {'adni': 'AAL_116', 'oasis': 'D_160', 'ukb': 'Gordon_333', 'hcpa': 'Gordon_333'}
+            testset = NeuroNetworkDataset(dname=testset, atlas_name=atlas_name[testset], **kargs)
     all_subjects = dataset.data_subj
     train_index, index = list(kf.split(all_subjects))[nfold]
     train_subjects = [all_subjects[i] for i in train_index]
@@ -169,9 +169,21 @@ class NeuroNetworkDataset(Dataset):
         self.node_attr = node_attr
         self.atlas_name = atlas_name
         self.subject = np.array(self.data['subject'])
+        # self.data['label'] = np.array(self.data['label'])
         self.data_subj = np.unique(self.subject)
         self.node_num = len(self.data['bold'][0])
         self.cached_data = [None for _ in range(len(self))]
+        self.label_remap = None
+        if 'task-rest' in self.data['label_name'] or 'task-REST' in self.data['label_name']:
+            restli = [i for i, l in enumerate(self.data['label_name']) if 'rest' in l.lower()]
+            assert len(restli) == 1, self.data['label_name']
+            restli = restli[0]
+            nln = list(self.data['label_name'])
+            nln[0] = self.data['label_name'][restli]
+            nln[restli] = self.data['label_name'][0]
+            self.data['label_name'] = nln
+            self.label_remap = {restli: 0, 0: restli}
+
         print("Data num", len(self), "BOLD shape (N x T)", self.data['bold'][0].shape, "Label name", self.data['label_name'])
         if self.transform is not None:
             processed_fn = f'processed_adj{self.adj_type}x{self.node_attr}_FCth{self.fc_th}SCth{self.sc_th}_{type(self.transform).__name__}{self.transform.k}'.replace('.', '')
@@ -230,7 +242,11 @@ class NeuroNetworkDataset(Dataset):
             data['adj_sc'] = adj_sc[None]
             
             self.cached_data[index] = Data.from_dict(data)
-        return self.cached_data[index]
+        data = self.cached_data[index]
+        if self.label_remap is not None:
+            if data.y in self.label_remap:
+                data.y = self.label_remap[data.y]
+        return data
 
     def __len__(self):
         return len(self.subject)
@@ -340,16 +356,16 @@ if __name__ == '__main__':
     # from data_detour import NeuroDetourNode, NeuroDetourEdge
     # from models.graphormer import ShortestDistance
     # from models.nagphormer import NAGdataTransform
-    tl, vl, ds, testl, testds = dataloader_generator(dname='oasis', atlas_name='D_160', node_attr='FC', testset='adni', fc_winsize=500)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
-    for data in tqdm(testl):
-        print(data.x.shape)
-        exit()
+    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='AAL_116', node_attr='FC', fc_winsize=500)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
+    # for data in tqdm(testl):
+    #     print(data.x.shape)
+    #     exit()
     sc_list = []
     fc_list = {}
     for data in tqdm(ds):
         sc_list.append(data.adj_sc[0])
         if data.y not in fc_list: fc_list[data.y] = []
-        fc_list[data.y].append(data.adj_fc[0])
+        fc_list[data.y].append(data.adj_sc[0])
     subis = list(range(min([len(fc_list[l]) for l in fc_list])))
     random.shuffle(subis)
     subi = subis[:10]
@@ -411,16 +427,15 @@ if __name__ == '__main__':
     #     plt.savefig(f'figs/sc_sub{i}.svg')
     #     plt.close()
     for l in fc_list:
-        if l == 0: continue
+        # if l == 0: continue
         fc_list[l] = torch.stack(fc_list[l]).float()
         fc_list[l][:, torch.arange(116), torch.arange(116)] = 0
-        for i in subi:
-            # plt.matshow(fc_list[l].mean(0))
-            plt.matshow(fc_list[l][i])
-            plt.colorbar()
-            plt.savefig(f'figs/fc_sub{i}_label{l}.png')
-            plt.savefig(f'figs/fc_sub{i}_label{l}.svg')
-            plt.close()
+    #     for i in subi:
+    #         plt.matshow(fc_list[l][i])
+    #         plt.colorbar()
+    #         plt.savefig(f'figs/fc_sub{i}_label{l}.png')
+    #         plt.savefig(f'figs/fc_sub{i}_label{l}.svg')
+    #         plt.close()
 
     # scs = tsne_spdmat(sc_list)
     # fig, axes = plt.subplots(2, 3, sharey=True, sharex=True)
@@ -432,24 +447,26 @@ if __name__ == '__main__':
     # plt.savefig(f'figs/sc_tsne.png')
     # plt.savefig(f'figs/sc_tsne.svg')
     # plt.close()
-    # for li, l in enumerate(fc_list):
-    #     fcs = tsne_spdmat(fc_list[l])
-    #     sns.scatterplot(x=fcs[:, 0], y=fcs[:, 1], ax=axes[li+1])
-    #     axes[li+1].set_title(f'label{l}')
+    for li, l in enumerate(fc_list):
+        # if l == 0: continue
+        # fcs = tsne_spdmat(fc_list[l])
+        # sns.scatterplot(x=fcs[:, 0], y=fcs[:, 1], ax=axes[li+1])
+        # axes[li+1].set_title(f'label{l}')
         # sns.displot(x=fcs[:, 0], y=fcs[:, 1], kind="kde")
         # plt.savefig(f'figs/fc_label{l}_tsne.png')
         # plt.savefig(f'figs/fc_label{l}_tsne.svg')
         # plt.close()
-        # plt.matshow(fc_list[l].mean(0))
-        # plt.colorbar()
-        # plt.savefig(f'figs/fc_label{l}_avg.png')
-        # plt.savefig(f'figs/fc_label{l}_avg.svg')
-        # plt.close()
-        # plt.matshow(fc_list[l].std(0))
-        # plt.colorbar()
-        # plt.savefig(f'figs/fc_label{l}_std.png')
-        # plt.savefig(f'figs/fc_label{l}_std.svg')
-        # plt.close()
+        # fc_list[l] = torch.nn.functional.interpolate(fc_list[l][None], size=(26,26), mode='bilinear')[0]
+        plt.matshow(fc_list[l][:, 50:90, 50:90].mean(0), cmap='jet', vmin=0, vmax=1)
+        plt.colorbar()
+        plt.savefig(f'figs/hcpasc_label{l}_avg.png')
+        plt.savefig(f'figs/hcpasc_label{l}_avg.svg')
+        plt.close()
+        plt.matshow(fc_list[l][:, 50:90, 50:90].std(0), cmap='jet', vmin=0, vmax=1)
+        plt.colorbar()
+        plt.savefig(f'figs/hcpasc_label{l}_std.png')
+        plt.savefig(f'figs/hcpasc_label{l}_std.svg')
+        plt.close()
 
     # plt.savefig(f'figs/scfc_tsne.png')
     # plt.savefig(f'figs/scfc_tsne.svg')

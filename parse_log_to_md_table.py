@@ -27,9 +27,9 @@ for logf in os.listdir('logs'):
     data['f1'].append(f"{f1_avg:.5f}+-{f1_std:.5f}")
 
 data = pd.DataFrame(data)
-data = data.sort_values('classifier')
 data = data.sort_values('data type')
 data = data.sort_values('backbone')
+data = data.sort_values('classifier')
 results = '\n'
 for unid in data['data'].unique():
     df = data[data['data']==unid]
@@ -96,7 +96,7 @@ def make_latex_table(tgtdn, tgtmetric, tgtmodels):
         elif 'BOLD' in dt:
             t2 = 'BOLD'
         else: continue
-        if tgtdn != 'oasis':
+        if dt.split(' ')[1] in atlas_remap:
             t3 = atlas_remap[dt.split(' ')[1]]
         else:
             t3 = ''
@@ -215,28 +215,29 @@ def ablation_plot(tgtdn, tgtmetric, ax):
     ax.spines['left'].set_bounds(0, 10)
     # ax.set_title(str(tgtdn)+str(tgtmetric))
 
-import matplotlib.pyplot as plt
-fig, axes = plt.subplots(2, 2, figsize=(8,4))
-ablation_plot(['hcpagordon'], 1, axes[0, 0])
-ablation_plot(['adniaal'], 1, axes[1, 0])
-ablation_plot(['oasis'], 1, axes[1, 1])
-# ablation_plot(['hcpaaal', 'hcpagordon'], 2, axes[0, 1])
-ablation_plot(['ukbgordon'], 1, axes[0, 1])
-# ablation_plot(['ukbaal', 'ukbgordon'], 2, axes[1, 1])
-# plt.legend()
-plt.tight_layout()
-plt.savefig(f'figs/ablation.png')
-plt.savefig(f'figs/ablation.svg')
-plt.close()
-# tgtmodels = ['mlp', 'gcn', 'braingnn', 'bnt', 'bolt', 'graphormer', 'nagphormer']
+# import matplotlib.pyplot as plt
+# fig, axes = plt.subplots(2, 2, figsize=(8,4))
+# ablation_plot(['hcpagordon'], 1, axes[0, 0])
+# ablation_plot(['adniaal'], 1, axes[1, 0])
+# ablation_plot(['oasis'], 1, axes[1, 1])
+# # ablation_plot(['hcpaaal', 'hcpagordon'], 2, axes[0, 1])
+# ablation_plot(['ukbgordon'], 1, axes[0, 1])
+# # ablation_plot(['ukbaal', 'ukbgordon'], 2, axes[1, 1])
+# # plt.legend()
+# plt.tight_layout()
+# plt.savefig(f'figs/ablation.png')
+# plt.savefig(f'figs/ablation.svg')
+# plt.close()
+tgtmodels = ['mlp', 'gcn', 'braingnn', 'bnt', 'bolt', 'graphormer', 'nagphormer']
+# tgtmodels = ['transformer']
 # print('hcpa', 'acc')
 # print(make_latex_table('hcpa', 1, tgtmodels))
 # print('hcpa', 'f1')
 # print(make_latex_table('hcpa', 2, tgtmodels))
-# print('ukb', 'acc')
-# print(make_latex_table('ukb', 1, tgtmodels))
-# print('ukb', 'f1')
-# print(make_latex_table('ukb', 2, tgtmodels))
+print('ukb', 'acc')
+print(make_latex_table('ukb', 1, tgtmodels))
+print('ukb', 'f1')
+print(make_latex_table('ukb', 2, tgtmodels))
 # print('adni', 'acc')
 # print(make_latex_table('adni', 1, tgtmodels))
 # print('adni', 'f1')
@@ -245,3 +246,6 @@ plt.close()
 # print(make_latex_table('oasis', 1, tgtmodels))
 # print('oasis', 'f1')
 # print(make_latex_table('oasis', 2, tgtmodels))
+# tgtmodels = ['graphormer', 'nagphormer']
+# print(make_latex_table('gcn', 1, tgtmodels))
+# print(make_latex_table('gcn', 2, tgtmodels))

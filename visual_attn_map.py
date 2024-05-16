@@ -216,6 +216,13 @@ model.load_state_dict(mweight)
 model = model.cpu()
 print(model)
 
+w2 = model.net[0].layers[0].self_attn.out_proj.weight.detach()
+# print(w2, w2.shape)
+w2 = torch.tensor_split(w2, torch.LongTensor([i for i in range(w2.shape[0]//8, w2.shape[0], w2.shape[0]//8)]))
+print([w.shape for w in w2])
+w2 = torch.stack(w2).abs().sum(1).sum(1) / (42*336)
+print(w2, w2.shape)
+# exit()
 tl, vl, ds = dataloader_generator(nfold=foldi, atlas_name=atlas, node_attr=node_attr, dname=dname)
 
 import matplotlib.pyplot as plt
@@ -233,6 +240,9 @@ for data in tl:
     attn_td, attn_fc = model(data)
     mat1 = attn_td.detach()#.numpy()
     mat2 = attn_fc.detach()#.numpy()
+    mat1 = torch.softmax(mat1,3)
+    # print(mat1.sum(2), mat1.sum(3))
+    # exit()
     data.adj_sc[:, torch.arange(node_sz), torch.arange(node_sz)] = False
     ## Get pathways   
     for bi in range(bsz): 
@@ -240,11 +250,18 @@ for data in tl:
         multihop_path_dict['label'].append(data.y[bi])
         pathways = []
         multihop_path = {}
-        avgmat1 = mat1[bi].mean(0)
+        # avgmat1 = mat1[bi].mean(0)
         for h in range(heads):
             headmat = mat1[bi, h]
             headmat[torch.arange(node_sz), torch.arange(node_sz)] = 0
             rowi, coli = torch.where(headmat>0)
+            for ci in coli.unique():
+                nid = coli[coli==ci] # node
+                w1 = headmat[rowi[coli==ci], nid] # weight after softmax
+                
+
+
+                
             nodes = torch.unique(torch.cat([rowi,coli]))
             if len(pathways) == 0: pathways = nodes[:, None]
             else:

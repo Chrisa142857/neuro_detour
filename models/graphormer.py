@@ -44,7 +44,7 @@ class Graphormer(nn.Module):
             norm=None#nn.LayerNorm(in_channel)
         )
         num_spatial = 100
-        max_degree = node_sz+1
+        max_degree = 1000
         self.deg_embedding = nn.Embedding(max_degree, in_channel)
         self.spd_embedding = nn.Embedding(num_spatial, heads, padding_idx=0)
 
@@ -58,7 +58,7 @@ class Graphormer(nn.Module):
         node_feature = data.x
         node_feature = self.lin_first(node_feature)
         node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), self.in_channel)
-        node_feature = node_feature + self.deg_embedding(data.adj_fc.sum(1))
+        node_feature = node_feature + self.deg_embedding(data.adj_fc.bool().sum(1))
         spd_dist = data.spd_dist.long()
         spd_mask = spd_dist < 0
         spd_dist[spd_mask] = 0

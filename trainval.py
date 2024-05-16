@@ -161,7 +161,7 @@ def main():
         if args.testname != 'None':
             model.load_state_dict(best_state)
             classifier.load_state_dict(best_cls_state)
-            tacc, tprec, trec, tf1 = eval(model, classifier, device, test_loader)
+            tacc, tprec, trec, tf1 = eval(model, classifier, device, test_loader, hcpatoukb=args.testname in ['hcpa', 'ukb'])
             print(f'Testset: Accuracy: {tacc}, F1 Score: {tf1}, Prec: {tprec}, Rec: {trec}')
             taccuracies.append(tacc)
             tf1_scores.append(tprec)
@@ -220,7 +220,7 @@ def train(model, classifier, device, loader, optimizer):
         losses.append(loss.detach().cpu().item())
     # print('Train loss', np.mean(losses))
 
-def eval(model, classifier, device, loader):
+def eval(model, classifier, device, loader, hcpatoukb=False):
     model.eval()
     y_true = []
     y_scores = []
@@ -242,6 +242,9 @@ def eval(model, classifier, device, loader):
 
     y_true = torch.cat(y_true, dim = 0).detach().cpu().numpy()
     y_scores = torch.cat(y_scores, dim = 0).numpy().argmax(1)
+    if hcpatoukb:
+        y_scores[y_scores>1] = 1
+        y_true[y_true>1] = 1
     acc = accuracy_score(y_true, y_scores)
     prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_scores, average='weighted')
     return acc, prec, rec, f1
