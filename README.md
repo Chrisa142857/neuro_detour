@@ -22,13 +22,15 @@
  * ADNI-DOD (Label unknown) 95 DWI 319 rfMRI
  * PPMI (Autism, not done)
 
-## Compare methods
+## Available methods
 
 ### Model for brain connectome
 
  * BrainNetTransformer (BNT, 2023): take FC as input, permutation variant
+ * FBnetgen (2022): Similar to BNT
  * BolT (2023): BOLD as input, permutation variant
  * BrainGNN (2021): Adj and node feature as input, node aggregation twice.
+ * HUNet
 
 ### General graph transformer
 
