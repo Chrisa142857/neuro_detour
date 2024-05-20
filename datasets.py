@@ -348,29 +348,54 @@ def tsne_spdmat(mats):
     X_embedded = TSNE(n_components=2, random_state=142857).fit_transform(X.numpy())
     return X_embedded
 
+def ttest_fc(fcs1, fcs2, thr=0.05):
+    from scipy import stats
+    print(fcs1.shape, fcs2.shape)
+    significant_fc = []
+    ps = []
+    for i in trange(fcs1.shape[1]):
+        for j in range(i+1, fcs1.shape[2]):
+            a = fcs1[:, i, j].numpy()
+            b = fcs2[:, i, j].numpy()
+            p = stats.ttest_ind(a, b).pvalue
+            if p < thr: 
+                significant_fc.append([i, j])
+                ps.append(p)
+    significant_fc = torch.LongTensor(significant_fc)
+    ps = torch.FloatTensor(ps)
+    print(significant_fc.shape)
+    return significant_fc, ps
+    
+
+
 if __name__ == '__main__':
     from sklearn.manifold import TSNE
     import matplotlib.pyplot as plt
     import seaborn as sns
     import random
+    dname = 'oasis'
     # from data_detour import NeuroDetourNode, NeuroDetourEdge
     # from models.graphormer import ShortestDistance
     # from models.nagphormer import NAGdataTransform
-    tl, vl, ds = dataloader_generator(dname='hcpa', atlas_name='AAL_116', node_attr='FC', fc_winsize=500)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
-    # for data in tqdm(testl):
-    #     print(data.x.shape)
-    #     exit()
+    tl, vl, ds = dataloader_generator(dname=dname, atlas_name='D_160', node_attr='FC', fc_winsize=100)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
+    d = []
+    for data in tqdm(ds):
+        # print(data.x.shape)
+        d.append(data.adj_fc.sum(-1).float().mean())
+        # exit()
+    print(sum(d)/len(d))
+    exit()
     sc_list = []
     fc_list = {}
     for data in tqdm(ds):
         sc_list.append(data.adj_sc[0])
         if data.y not in fc_list: fc_list[data.y] = []
-        fc_list[data.y].append(data.adj_sc[0])
+        fc_list[data.y].append(data.adj_fc[0])
     subis = list(range(min([len(fc_list[l]) for l in fc_list])))
     random.shuffle(subis)
     subi = subis[:10]
     sc_list = torch.stack(sc_list).float()
-    sc_list[:, torch.arange(116), torch.arange(116)] = 0
+    sc_list[:, torch.arange(sc_list.shape[1]), torch.arange(sc_list.shape[1])] = 0
     # plt.matshow(sc_list.mean(0))
     # plt.colorbar()
     # plt.savefig('sc_avg.png')
@@ -429,7 +454,25 @@ if __name__ == '__main__':
     for l in fc_list:
         # if l == 0: continue
         fc_list[l] = torch.stack(fc_list[l]).float()
-        fc_list[l][:, torch.arange(116), torch.arange(116)] = 0
+        fc_list[l][:, torch.arange(sc_list.shape[1]), torch.arange(sc_list.shape[1])] = 0
+    
+    if dname == 'oasis':
+        adj = torch.zeros(148, 148)
+        # fc_ind = torch.LongTensor([17,18,37,43,49,91,92,111,117,123])-1 # Subcortical - entorhinal 
+        fc_ind = torch.LongTensor([5,19,20,25,42,65,71,79,93,94,99,116,131,139,145])-1 # Occipital - Parietal
+        meshx, meshy = torch.meshgrid(fc_ind, fc_ind)
+        sig_fc, p = ttest_fc(fc_list[0][:, meshx, meshy], fc_list[1][:, meshx, meshy], thr=0.1)
+    elif dname == 'adni':
+        adj = torch.zeros(sc_list.shape[1], sc_list.shape[1])
+        # fc_ind = torch.LongTensor([71,72,73,74,75,76,77,78,83,84,87,88])-1
+        fc_ind = torch.LongTensor([i for i in range(43,71)])-1 # Occipital - Parietal
+        meshx, meshy = torch.meshgrid(fc_ind, fc_ind)
+        sig_fc, p = ttest_fc(fc_list[0][:,meshx, meshy], fc_list[1][:,meshx, meshy], thr=0.1)
+    top10_ind = torch.argsort(p)[:10]
+    adj[fc_ind[sig_fc[top10_ind, 0]], fc_ind[sig_fc[top10_ind, 1]]] = 1-p[top10_ind]
+    print(torch.where(adj))
+    np.savetxt(f'resources/{dname}_significant_fc_top10.edge', adj.numpy())
+    exit()
     #     for i in subi:
     #         plt.matshow(fc_list[l][i])
     #         plt.colorbar()
@@ -459,13 +502,13 @@ if __name__ == '__main__':
         # fc_list[l] = torch.nn.functional.interpolate(fc_list[l][None], size=(26,26), mode='bilinear')[0]
         plt.matshow(fc_list[l][:, 50:90, 50:90].mean(0), cmap='jet', vmin=0, vmax=1)
         plt.colorbar()
-        plt.savefig(f'figs/hcpasc_label{l}_avg.png')
-        plt.savefig(f'figs/hcpasc_label{l}_avg.svg')
+        plt.savefig(f'figs/{dname}fc_label{l}_avg.png')
+        plt.savefig(f'figs/{dname}fc_label{l}_avg.svg')
         plt.close()
         plt.matshow(fc_list[l][:, 50:90, 50:90].std(0), cmap='jet', vmin=0, vmax=1)
         plt.colorbar()
-        plt.savefig(f'figs/hcpasc_label{l}_std.png')
-        plt.savefig(f'figs/hcpasc_label{l}_std.svg')
+        plt.savefig(f'figs/{dname}fc_label{l}_std.png')
+        plt.savefig(f'figs/{dname}fc_label{l}_std.svg')
         plt.close()
 
     # plt.savefig(f'figs/scfc_tsne.png')

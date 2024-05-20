@@ -202,13 +202,15 @@ class VisDetourTransformer(DetourTransformer):
 
 
 
-node_sz = 333
-atlas = 'Gordon_333'
+node_sz = 116
+atlas = 'AAL_116'
 node_attr = 'FC'
 foldi = 0
-dname = 'hcpa'
-mweight_fn = f'model_weights/neurodetour_{atlas}_boldwin500_FC{node_attr}/fold{foldi}_2024-05-14-11-08-29-992532.pt'
-
+dname = 'adni'
+# mweight_fn = f'model_weights/neurodetour_{atlas}_boldwin500_FC{node_attr}/fold{foldi}_2024-05-14-11-08-29-992532.pt' # HCPA
+# mweight_fn = 'model_weights/neurodetour_D_160_boldwin500_FCFC/fold0_2024-05-14-12-55-24-702634.pt' # OASIS
+mweight_fn = 'model_weights/neurodetour_AAL_116_boldwin500_FCFC/fold0_2024-05-14-12-53-34-133933.pt' # ADNI
+# mweight_fn = 'model_weights/neurodetour_Gordon_333_boldwin500_FCFC/fold0_2024-05-14-12-07-29-167949.pt' # UKB
 mweight = torch.load(mweight_fn, map_location='cpu')
 
 model = VisDetourTransformer(node_sz=node_sz, in_channel=node_sz, out_channel=768)
@@ -234,10 +236,16 @@ bsz = 4
 multihop_path_dict = {
     'label': []
 }
+if dname == 'adni':
+    tgt_c = [53, 59] # defualt [73, 87] subcortical [72, 86] cortical-optical [53, 59]
+elif dname == 'oasis':
+    tgt_c = [93, 138] # defualt [17, 110] subcortical [16, 36] cortical [93, 138]
+path_n = 1
 subi = 0
 for data in tl:
     # print(data.x.shape, data.y)
     attn_td, attn_fc = model(data)
+    fc = torch.stack(torch.tensor_split(data.x, data.ptr)[1:-1])
     mat1 = attn_td.detach()#.numpy()
     mat2 = attn_fc.detach()#.numpy()
     mat1 = torch.softmax(mat1,3)
@@ -248,63 +256,82 @@ for data in tl:
     for bi in range(bsz): 
         subi += 1
         multihop_path_dict['label'].append(data.y[bi])
-        pathways = []
-        multihop_path = {}
         # avgmat1 = mat1[bi].mean(0)
-        for h in range(heads):
-            headmat = mat1[bi, h]
-            headmat[torch.arange(node_sz), torch.arange(node_sz)] = 0
-            rowi, coli = torch.where(headmat>0)
-            for ci in coli.unique():
-                nid = coli[coli==ci] # node
-                w1 = headmat[rowi[coli==ci], nid] # weight after softmax
-                
-
-
-                
-            nodes = torch.unique(torch.cat([rowi,coli]))
-            if len(pathways) == 0: pathways = nodes[:, None]
-            else:
-                curr_node = nodes.repeat(len(pathways),1).T.reshape(-1)
-                pathways = pathways.repeat(len(nodes),1)
-                adjacent = data.adj_sc[bi, pathways[:, -1], curr_node]
-                no_repeat = (pathways != curr_node[:, None]).all(1)
-                adjacent = (adjacent & no_repeat).bool()
-                pathways = torch.cat([pathways[adjacent], curr_node[adjacent, None]],1)
-                pathways = torch.unique(pathways, dim=0)
+        multihop_path = {}
+        for ci in tgt_c:
+        # for ci in trange(mat1.shape[-1]):
+            # if ci == 3: break
+            pathways = []
+            pathws = []
+            for h in range(heads):
+                headmat = mat1[bi, h]
+                headmat[torch.arange(node_sz), torch.arange(node_sz)] = 0
+                rowi = torch.where(headmat[:, ci]>0)[0]
+                nodes = torch.LongTensor([ci]).repeat(len(rowi)) # node
+                w1 = headmat[rowi, nodes] # weight after softmax
+                pathw = w1*w2[h]
+                if len(pathways) == 0: 
+                    pathways = torch.stack([nodes, rowi], 1)
+                    pathws = pathw[:, None]
+                else:
+                    curr_node = rowi.repeat(len(pathways),1).T.reshape(-1)
+                    curr_w = pathw.repeat(len(pathways),1).T.reshape(-1)
+                    pathways = pathways.repeat(len(rowi),1)
+                    adjacent = data.adj_sc[bi, pathways[:, -1], curr_node]
+                    no_repeat = (pathways != curr_node[:, None]).all(1)
+                    adjacent = (adjacent & no_repeat).bool()
+                    pathways = torch.cat([pathways[adjacent], curr_node[adjacent, None]],1)
+                    pathways = torch.unique(pathways, dim=0)
+                    pathws = torch.cat([pathws.repeat(len(rowi), 1)[adjacent], curr_w[adjacent, None]], 1)
                 if pathways.shape[0] == 0: break
                 if pathways.shape[1] > 2:
-                    # pathweights = avgmat1[pathways[:,:-1], pathways[:, 1:]]
-                    pathweights = torch.stack([mat1[bi, i, pathways[:, i], pathways[:, i+1]] for i in range(pathways.shape[1]-1)], 1)
-                    pathweight = pathweights.mean(1)
+                    fc_ind = torch.LongTensor([i for i in range(len(pathways)) if pathways[i, -1] in tgt_c])
+                    pathw = pathws.mean(1)[fc_ind]
+                    ind = torch.argsort(pathw, descending=True)[:path_n]
                     path = torch.cat([
-                        pathweight[pathweight > torch.quantile(pathweight,0.9), None],
-                        pathways[pathweight > torch.quantile(pathweight,0.9)]
+                        pathw[ind, None],
+                        pathways[fc_ind][ind]
                     ], 1)
-                    multihop_path[f'{h+1}hop']=path
+                    # print(path.shape)
+                    # exit()
+                    if f'{h+1}hop' not in multihop_path: multihop_path[f'{h+1}hop'] = []
+                    multihop_path[f'{h+1}hop'].append(path)
+
         path_adj = torch.zeros(node_sz, node_sz)
-        path_n = 10
         path_i = 0
         weights = []
         paths = []
+        headi, pathi = [], []
         for ki, key in enumerate(multihop_path):
+            multihop_path[key] = torch.cat(multihop_path[key], 0)
             weights.append(multihop_path[key][:, 0])
-            paths.append(torch.cat([multihop_path[key][:, 1:], torch.zeros(len(multihop_path[key]), pathways.shape[1]-multihop_path[key][:, 1:].shape[1])-ki-1],1))
+            # paths.append(torch.cat([multihop_path[key][:, 1:], torch.zeros(len(multihop_path[key]), pathways.shape[1]-multihop_path[key][:, 1:].shape[1])-ki-1],1))
+            paths.append(multihop_path[key][:, 1:].long())
+            headi.extend([ki for _ in range(len(multihop_path[key]))])
+            pathi.extend([i for i in range(len(multihop_path[key]))])
         weights = torch.cat(weights)
-        paths = torch.cat(paths)
-        overlap = paths.repeat(len(paths), 1, 1) == paths.repeat(len(paths), 1, 1)
-        overlap = overlap.any(-1)
-        iso_path_id = []
+        # paths = torch.cat(paths)
+        # overlap = paths.repeat(len(paths), 1, 1) == paths.repeat(len(paths), 1, 1)
+        # overlap = overlap.any(-1)
+        # iso_path_id = []
+        iso_paths = []
         for i in torch.argsort(weights, descending=True):
-            if overlap[i, iso_path_id].any() or path_i >= path_n: continue
-            iso_path_id.append(i.item())
+            # if overlap[i, iso_path_id].any() or path_i >= path_n: continue
+            if path_i >= path_n: continue
+            # iso_path_id.append(i.item())
+            # path_adj[paths[headi[i]][pathi[i], :-1], paths[headi[i]][pathi[i], 1:]] = torch.stack([fc[bi, paths[headi[i]][pathi[i], j], paths[headi[i]][pathi[i], j+1]] for j in range(paths[headi[i]].shape[1]-1)])
+            path_adj[paths[headi[i]][pathi[i], :-1], paths[headi[i]][pathi[i], 1:]] = (20-(path_i+1))/20#weights[i].repeat(paths[headi[i]].shape[1]-1)
+            # path_adj[paths[headi[i]][pathi[i], 0], paths[headi[i]][pathi[i], -1]] = fc[bi, paths[headi[i]][pathi[i], 0], paths[headi[i]][pathi[i], -1]].abs()
+            iso_paths.append(paths[headi[i]][pathi[i]])
             path_i += 1
-        iso_paths = paths[iso_path_id].long()
-        pathweights = torch.cat([mat1[bi, i, iso_paths[:, i], iso_paths[:, i+1]] for i in range(iso_paths.shape[1]-1)])
-        pathweights = (pathweights-pathweights.min())/(pathweights.max()-pathweights.min())
-        path_adj[iso_paths[:, :-1], iso_paths[:, 1:]] = pathweights
-        print(f'Got {path_i} paths', iso_paths)
-        np.savetxt(f'resources/{atlas}_{dname}_top{path_n}Path_sub{subi}_label{data.y[bi].item()}_adj.edge', path_adj.numpy(), delimiter='\t', fmt='%.5f')
+        # iso_paths = paths[iso_path_id].long()
+        # fc = torch.stack(torch.tensor_split(data.x, data.ptr)[1:-1])
+        # pathweights = torch.cat([fc[bi, iso_paths[:, i], iso_paths[:, i+1]] for i in range(iso_paths.shape[1]-1)])
+        # # pathweights = (pathweights-pathweights.min())/(pathweights.max()-pathweights.min())
+        # path_adj[iso_paths[:, :-1], iso_paths[:, 1:]] = pathweights
+        print(f'Sub {subi} Label {data.y[bi].item()} Got {path_i} paths', iso_paths)
+        tgt_cstr = "-".join([str(tgt_ci) for tgt_ci in tgt_c])
+        np.savetxt(f'resources/{atlas}_{dname}_top{path_n}Path_signFC{tgt_cstr}_sub{subi}_label{data.y[bi].item()}_adj.edge', path_adj.numpy(), delimiter='\t', fmt='%.5f')
 #             if key not in multihop_path_dict:
 #                 multihop_path_dict[key] = []
 #             multihop_path_dict[key].append(multihop_path[key])
