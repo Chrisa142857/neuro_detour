@@ -374,7 +374,6 @@ if __name__ == '__main__':
     import seaborn as sns
     import random
     dname = 'oasis'
-    # from data_detour import NeuroDetourNode, NeuroDetourEdge
     # from models.graphormer import ShortestDistance
     # from models.nagphormer import NAGdataTransform
     tl, vl, ds = dataloader_generator(dname=dname, atlas_name='D_160', node_attr='FC', fc_winsize=100)#, transform=NAGdataTransform(), transform=NeuroDetourNode(k=5, node_num=333)
