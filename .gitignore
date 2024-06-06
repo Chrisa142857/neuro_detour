@@ -5,3 +5,4 @@ figs/
 ./nohup.out
 resources/
 model_weights/
+results_in_markdown.md

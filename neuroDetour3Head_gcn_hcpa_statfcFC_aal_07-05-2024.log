@@ -1,9 +1,0 @@
-Namespace(batch_size=32, epochs=100, models='neurodetour', classifier='gcn', max_patience=30, hiddim=768, lr=0.001, atlas='AAL_116', dataname='hcpa', node_attr='FC', adj_type='FC', bold_winsize=500, decay=0, device='cuda:0', detour_type='node', detour_k=4)
-Data num 4863 BOLD shape (N x T) torch.Size([116, 500]) Label name ['task-REST', 'task-CARIT', 'task-FACENAME', 'task-VISMOTOR']
-Fold 1, Train 570 subjects, Val 143 subjects, len(train_data)=3885, len(data)=978
-Accuracy: 0.9662576687116564, F1 Score: 0.9664199576871061, Prec: 0.966958631436923, Rec: 0.9662576687116564
-Fold 2, Train 570 subjects, Val 143 subjects, len(train_data)=3883, len(data)=980
-Accuracy: 0.963265306122449, F1 Score: 0.9634947057342899, Prec: 0.9640914489785241, Rec: 0.963265306122449
-Fold 3, Train 570 subjects, Val 143 subjects, len(train_data)=3888, len(data)=975
-Accuracy: 0.9661538461538461, F1 Score: 0.9664149534468114, Prec: 0.9673265940787281, Rec: 0.9661538461538461
-Fold 4, Train 571 subjects, Val 142 subjects, len(train_data)=3892, len(data)=971
