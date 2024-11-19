@@ -1,3 +1,6 @@
+'''
+DFS used by NeuroPath/NeuroDetour
+'''
 import torch
 import networkx as nx
 from torch_geometric.utils import remove_self_loops, add_self_loops

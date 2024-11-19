@@ -1,3 +1,6 @@
+'''
+Path DFS codes from PathNN
+'''
 import os
 import torch
 from torch_geometric.utils import to_networkx
