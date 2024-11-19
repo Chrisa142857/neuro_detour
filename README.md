@@ -5,7 +5,7 @@
 
 # File explanition
 
-`trainval.py` is the main function of the 5-fold cross validation classification experiments. 
+`trainval.py` is the main function of the multi-fold cross validation classification experiments. 
 
 `datasets.py` contains a general dataset class and the dataloader generator.
 
@@ -19,7 +19,7 @@
 
 # For future works
 
-## Available datasets (BOLD and SC mat)
+## Available datasets
 
  * HCP-Aging (4-task, 2-direction) ~4800 fMRI 716 subjects
  * HCP-YA (7-Task, 2-direction) ~3200 fMRI 248 subjects
@@ -27,7 +27,8 @@
  * ADNI (AD/CN) 135 rfMRI&DWI
  * OASIS (AD/CN) 250 rfMRI&DWI
  * ADNI-DOD (Label unknown) 95 DWI 319 rfMRI
- * PPMI (Autism, not done)
+ * PPMI (CN/Patient/prodromal/swedd) 15/113/67/14 rfMRI
+ * ABIDE (CN/Patient) 537/488 rfMRI
 
 ## Available methods
 
@@ -37,7 +38,6 @@
  * FBnetgen (2022): Similar to BNT
  * BolT (2023): BOLD as input, permutation variant
  * BrainGNN (2021): Adj and node feature as input, node aggregation twice.
- * HUNet
 
 ### General graph transformer
 

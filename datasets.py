@@ -23,6 +23,8 @@ DATAROOT = {
     'hcpa': '/ram/USERS/bendan/ACMLab_DATA',
     'ukb': '/ram/USERS/ziquanw/data',
     'hcpya': '/ram/USERS/ziquanw/data',
+    'ppmi': '/ram/USERS/jiaqi/benchmark_fmri/data/PPMI',
+    'abide': '/ram/USERS/jiaqi/benchmark_fmri/data/ABIDE',
 }
 DATANAME = {
     'adni': 'ADNI_BOLD_SC',
@@ -41,42 +43,6 @@ LABEL_REMAP = {
     'adni': {'CN': 'CN', 'SMC': 'CN', 'EMCI': 'CN', 'LMCI': 'AD', 'AD': 'AD'},
     'oasis': {'CN': 'CN', 'AD': 'AD'},
 }
-
-def dataloader_generator(batch_size=4, num_workers=8, nfold=0, total_fold=5, dataset=None, testset='None', **kargs):
-    kf = KFold(n_splits=total_fold, shuffle=True, random_state=142857)
-    if dataset is None:
-        dataset = NeuroNetworkDataset(**kargs)
-    if isinstance(testset, str):
-        if testset != 'None':
-            # if testset != 'oasis' and testset != 'adni' and kargs['dname'] != 'adni' and kargs['dname'] != 'oasis':
-            #     del kargs['dname']
-            #     testset = NeuroNetworkDataset(dname=testset, **kargs)
-            # else:
-            del kargs['atlas_name'], kargs['dname']
-            atlas_name = {'adni': 'AAL_116', 'oasis': 'D_160', 'ukb': 'Gordon_333', 'hcpa': 'Gordon_333'}
-            testset = NeuroNetworkDataset(dname=testset, atlas_name=atlas_name[testset], **kargs)
-    all_subjects = dataset.data_subj
-    train_index, index = list(kf.split(all_subjects))[nfold]
-    train_subjects = [all_subjects[i] for i in train_index]
-    subjects = [all_subjects[i] for i in index]
-    # Filter dataset based on training and validation subjects
-    train_data = [di for di, subj in enumerate(dataset.subject) if subj in train_subjects]
-    data = [di for di, subj in enumerate(dataset.subject) if subj in subjects]
-    print(f'Fold {nfold + 1}, Train {len(train_subjects)} subjects, Val {len(subjects)} subjects, len(train_data)={len(train_data)}, len(data)={len(data)}')
-    train_dataset = torch.utils.data.Subset(dataset, train_data)
-    valid_dataset = torch.utils.data.Subset(dataset, data)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=False)
-    loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-    if testset == 'None':
-        return train_loader, loader, dataset
-    else:
-        _, index = list(kf.split(testset.data_subj))[nfold]
-        subjects = [testset.data_subj[i] for i in index]
-        data = [di for di, subj in enumerate(testset.subject) if subj in subjects]
-        print(f'Fold {nfold + 1}, Test {len(subjects)} subjects, len(test_data)={len(data)}')
-        test_dataset = torch.utils.data.Subset(testset, data)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-        return train_loader, loader, dataset, test_loader, testset
 
 class NeuroNetworkDataset(Dataset):
 
@@ -370,8 +336,167 @@ def ttest_fc(fcs1, fcs2, thr=0.05):
     ps = torch.FloatTensor(ps)
     print(significant_fc.shape)
     return significant_fc, ps
-    
 
+
+class Dataset_PPMI_ABIDE(Dataset):
+    def __init__(self, atlas_name='AAL_116', # multi-atlas not available 
+                 dname='hcpa',
+                node_attr = 'FC', adj_type = 'FC',
+                transform = None,
+                fc_winsize = 137, # not implement
+                fc_winoverlap = 0, # not implement
+                fc_th = 0.5,
+                sc_th = 0.1, **kargs):
+        super(Dataset_PPMI_ABIDE, self).__init__()
+        self.adj_type = adj_type
+        self.transform = transform
+        self.node_attr = node_attr
+        self.atlas_name = atlas_name
+        self.fc_th = fc_th
+        self.sc_th = sc_th
+        self.fc_winsize = fc_winsize
+        self.node_num = 116
+        self.label_remap = None
+        self.root_dir = DATAROOT[dname]
+        self.data = []
+        self.labels = []
+        self.data_path = []
+        self.subject = []
+        for subdir, _, files in os.walk(self.root_dir):
+            for file in files:
+                if 'AAL116_features_timeseries' in file:
+                    file_path = os.path.join(subdir, file)
+                    self.data_path.append(file_path)
+                    label = self.get_label(subdir)
+                    self.labels.append(label)
+                    self.subject.append(subdir)
+
+        self.cached_data = [None for _ in range(len(self))]
+        self.data_subj = np.unique(self.subject)
+
+    def get_label(self, subdir):
+        if 'control' in subdir:
+            return 0
+        elif 'patient' in subdir:
+            return 1
+        elif 'prodromal' in subdir:
+            return 2
+        elif 'swedd' in subdir:
+            return 3
+        else:
+            assert False, subdir
+        
+    def __len__(self):
+        return len(self.data_path)
+    
+    def __add__(self, other):
+        self.data_path += other.data_path
+        self.labels = np.concatenate((self.labels, other.labels), axis=0)
+        return self
+
+    def __getitem__(self, index):
+        label = self.labels[index]
+        # data = (features - torch.mean(features, axis=0, keepdims=True)) / torch.std(features, axis=0, keepdims=True)
+        if self.cached_data[index] is None:
+            features = loadmat(self.data_path[index])['data'].T
+            features = torch.from_numpy(features).float()
+            x = torch.nan_to_num(features)
+            fc = torch.corrcoef(x)
+            subjn = self.subject[index]
+            edge_index_fc = torch.stack(torch.where(fc > self.fc_th))
+            edge_index_sc = None
+            if self.adj_type == 'FC':
+                edge_index = edge_index_fc
+                # adj = torch.sparse_coo_tensor(indices=edge_index_fc, values=fc[edge_index_fc[0], edge_index_fc[1]], size=(self.node_num, self.node_num))
+            else:
+                assert False, "Not implement"
+                # adj = torch.sparse_coo_tensor(indices=edge_index_sc, values=sc[edge_index_sc[0], edge_index_sc[1]], size=(self.node_num, self.node_num))
+            if self.node_attr=='FC':
+                x = fc
+            elif self.node_attr=='BOLD':
+                x = x[:, :self.fc_winsize]
+                if len(x) < self.fc_winsize: assert False, "Not implement"
+            elif self.node_attr=='SC':
+                assert False, "Not implement"
+            elif self.node_attr=='ID':
+                x = torch.arange(self.node_num).float()[:, None]
+        
+            x[x.isnan()] = 0
+            x[x.isinf()] = 0
+            data = {
+                'edge_index': edge_index,
+                'x': x,
+                'y': self.labels[index],
+                'edge_index_fc': edge_index_fc,
+                'edge_index_sc': edge_index_sc
+            }
+            if self.transform is not None:
+                new_data = self.transform(Data.from_dict(data))
+                # self.cached_data[index] = new_data
+                for key in new_data:
+                    data[key] = new_data[key]
+                    
+            adj_fc = torch.zeros(x.shape[0], x.shape[0]).bool()
+            adj_fc[edge_index_fc[0], edge_index_fc[1]] = True
+            adj_sc = torch.zeros(x.shape[0], x.shape[0]).bool()
+            # adj_sc[edge_index_sc[0], edge_index_sc[1]] = True
+            adj_fc[torch.arange(self.node_num), torch.arange(self.node_num)] = True
+            adj_sc[torch.arange(self.node_num), torch.arange(self.node_num)] = True
+            data['adj_fc'] = adj_fc[None]
+            data['adj_sc'] = adj_sc[None]
+            
+            self.cached_data[index] = Data.from_dict(data)
+        data = self.cached_data[index]
+        if self.label_remap is not None:
+            if data.y in self.label_remap:
+                data.y = self.label_remap[data.y]
+        return data
+
+DATASET_CLASS = {
+    'adni': NeuroNetworkDataset,
+    'oasis': NeuroNetworkDataset,
+    'hcpa': NeuroNetworkDataset,
+    'ukb': NeuroNetworkDataset,
+    'hcpya': NeuroNetworkDataset,
+    'ppmi': Dataset_PPMI_ABIDE,
+    'abide': Dataset_PPMI_ABIDE,
+}
+
+def dataloader_generator(batch_size=4, num_workers=8, nfold=0, total_fold=5, dataset=None, testset='None', **kargs):
+    kf = KFold(n_splits=total_fold, shuffle=True, random_state=142857)
+    if dataset is None:
+        dataset = DATASET_CLASS[kargs['dname']](**kargs)
+    if isinstance(testset, str):
+        if testset != 'None':
+            # if testset != 'oasis' and testset != 'adni' and kargs['dname'] != 'adni' and kargs['dname'] != 'oasis':
+            #     del kargs['dname']
+            #     testset = DATASET_CLASS[kargs['dname']](dname=testset, **kargs)
+            # else:
+            del kargs['atlas_name'], kargs['dname']
+            atlas_name = {'adni': 'AAL_116', 'oasis': 'D_160', 'ukb': 'Gordon_333', 'hcpa': 'Gordon_333'}
+            testset = DATASET_CLASS[kargs['dname']](dname=testset, atlas_name=atlas_name[testset], **kargs)
+    all_subjects = dataset.data_subj
+    train_index, index = list(kf.split(all_subjects))[nfold]
+    train_subjects = [all_subjects[i] for i in train_index]
+    subjects = [all_subjects[i] for i in index]
+    # Filter dataset based on training and validation subjects
+    train_data = [di for di, subj in enumerate(dataset.subject) if subj in train_subjects]
+    data = [di for di, subj in enumerate(dataset.subject) if subj in subjects]
+    print(f'Fold {nfold + 1}, Train {len(train_subjects)} subjects, Val {len(subjects)} subjects, len(train_data)={len(train_data)}, len(data)={len(data)}')
+    train_dataset = torch.utils.data.Subset(dataset, train_data)
+    valid_dataset = torch.utils.data.Subset(dataset, data)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=False)
+    loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    if testset == 'None':
+        return train_loader, loader, dataset
+    else:
+        _, index = list(kf.split(testset.data_subj))[nfold]
+        subjects = [testset.data_subj[i] for i in index]
+        data = [di for di, subj in enumerate(testset.subject) if subj in subjects]
+        print(f'Fold {nfold + 1}, Test {len(subjects)} subjects, len(test_data)={len(data)}')
+        test_dataset = torch.utils.data.Subset(testset, data)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        return train_loader, loader, dataset, test_loader, testset
 
 if __name__ == '__main__':
     from sklearn.manifold import TSNE

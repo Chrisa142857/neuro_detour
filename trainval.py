@@ -61,6 +61,9 @@ DATA_CLASS_N = {
     'hcpa': 4,
     'adni': 2,
     'oasis': 2,
+    'oasis': 2,
+    'ppmi': 4,
+    'abide': 2,
 }
 
 def main():
@@ -89,6 +92,7 @@ def main():
     parser.add_argument('--fc_th', type=float, default = 0.5)
     parser.add_argument('--sc_th', type=float, default = 0.1)
     parser.add_argument('--only_dataload', action='store_true')
+    parser.add_argument('--cv_fold_n', type=int, default = 5)
 
     args = parser.parse_args()
     print(args)
@@ -120,8 +124,8 @@ def main():
     if args.savemodel:
         mweight_fn = f'model_weights/{args.models}_{args.atlas}_boldwin{args.bold_winsize}_{args.adj_type}{args.node_attr}'
         os.makedirs(mweight_fn, exist_ok=True)
-    for i in range(5):
-        dataloaders = dataloader_generator(batch_size=args.batch_size, nfold=i, dataset=dataset, 
+    for i in range(args.cv_fold_n):
+        dataloaders = dataloader_generator(batch_size=args.batch_size, nfold=i, dataset=dataset, total_fold=args.cv_fold_n,
                                                                  node_attr=args.node_attr, adj_type=args.adj_type, transform=transform, dname=args.dataname, testset=testset,
                                                                  fc_winsize=args.bold_winsize, atlas_name=args.atlas, fc_th=args.fc_th, sc_th=args.sc_th)
         if args.only_dataload: exit()
