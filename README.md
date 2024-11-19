@@ -4,7 +4,9 @@
 
 `datasets.py` contains a general dataset class and the dataloader generator.
 
-`visual_attn_map.py` can visualize attention map and calculate weights of neural pathways.
+`visual_pathway.py` can visualize attention map and calculate weights of neural pathways.
+
+`ttest_hcpa.py` can reproduce ttest results in the paper.
 
 `models/*.py` contains all deep models tested in the experiments. `model/neuro_detour.py` is the proposed model. `model/graphormer.py` is Graphormer implemented by us with calculating the shortest-path distance (SPD) as a pre-transform of dataset.
 
@@ -44,3 +46,15 @@
  * SAGE
  * SGC
 
+### Cite
+````bibtex
+@inproceedings{wei2024neuropath,
+  dimensions = {true},
+  title = {NeuroPath: A Neural Pathway Transformer for Joining the Dots of Human Connectomes},
+  author = {Wei, Ziquan and Dan, Tingting and Ding, Jiaqi and Wu, Guorong},
+  booktitle = {The Thirty-eighth Annual Conference on Neural Information Processing Systems},
+  year = {2024},
+  publisher = {NeurIPS},
+  url = {https://openreview.net/forum?id=AvBuK8Ezrg}
+}
+````

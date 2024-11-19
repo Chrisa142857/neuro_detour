@@ -3,12 +3,13 @@ import pandas as pd
 
 
 data = {'backbone': [], 'classifier': [], 'data': [], 'data type': [], 'acc': [], 'f1': []}
-
-for logf in os.listdir('logs'):
+logtag = 'rebuttal_'
+for logf in os.listdir(f'{logtag}logs'):
     if not logf.endswith('.log'): continue
-    with open(f'logs/{logf}', 'r') as f:
+    with open(f'{logtag}logs/{logf}', 'r') as f:
         lines = f.read().split('\n')[-5:]
     if 'Mean' not in lines[0]: continue
+    logf = logf.replace('_FCth', 'FCth')
     bb = logf.split('_')[0]
     cls = logf.split('_')[1]
     dn = logf.split('_')[2]
@@ -40,7 +41,7 @@ for unid in data['data'].unique():
     results += df.to_markdown()
     results += '\n'
 
-with open('results_in_markdown.md', 'w') as f:
+with open(f'{logtag}results_in_markdown.md', 'w') as f:
     f.write(results)
 
 atlas_remap = {
@@ -70,10 +71,10 @@ def make_latex_table(tgtdn, tgtmetric, tgtmodels):
             'Dynamic BOLD ': [],
         }
     res = {}
-    for logf in os.listdir('logs'):
+    for logf in os.listdir('{logtag}logs'):
 
         if not logf.endswith('.log'): continue
-        with open(f'logs/{logf}', 'r') as f:
+        with open(f'{logtag}logs/{logf}', 'r') as f:
             lines = f.read().split('\n')[-5:]
         if 'Mean' not in lines[0]: continue
         bb = logf.split('_')[0]
@@ -129,9 +130,9 @@ def make_latex_table(tgtdn, tgtmetric, tgtmodels):
 def ablation_plot(tgtdn, tgtmetric, ax):
     tgtdt = 'statfcFC'
     res = {}
-    for logf in os.listdir('logs'):
+    for logf in os.listdir('{logtag}logs'):
         if not logf.endswith('.log'): continue
-        with open(f'logs/{logf}', 'r') as f:
+        with open(f'{logtag}logs/{logf}', 'r') as f:
             lines = f.read().split('\n')[-5:]
         if 'Mean' not in lines[0]: continue
         bb = logf.split('_')[0]
@@ -234,10 +235,10 @@ tgtmodels = ['mlp', 'gcn', 'braingnn', 'bnt', 'bolt', 'graphormer', 'nagphormer'
 # print(make_latex_table('hcpa', 1, tgtmodels))
 # print('hcpa', 'f1')
 # print(make_latex_table('hcpa', 2, tgtmodels))
-print('ukb', 'acc')
-print(make_latex_table('ukb', 1, tgtmodels))
-print('ukb', 'f1')
-print(make_latex_table('ukb', 2, tgtmodels))
+# print('ukb', 'acc')
+# print(make_latex_table('ukb', 1, tgtmodels))
+# print('ukb', 'f1')
+# print(make_latex_table('ukb', 2, tgtmodels))
 # print('adni', 'acc')
 # print(make_latex_table('adni', 1, tgtmodels))
 # print('adni', 'f1')

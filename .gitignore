@@ -1,4 +1,6 @@
 logs/
+rebuttal_logs/
+rebuttal_resource/
 __pycache__/
 data/
 figs/
@@ -6,3 +8,6 @@ figs/
 resources/
 model_weights/
 results_in_markdown.md
+*.svg
+*.ipynb
+rebuttal_results_in_markdown.md

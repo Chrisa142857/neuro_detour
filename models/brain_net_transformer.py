@@ -56,7 +56,7 @@ class TransPoolingEncoder(nn.Module):
 
 class BrainNetworkTransformer(BaseModel):
     
-    def __init__(self, node_sz, in_channel, out_channel, pos_encoding=None, pos_embed_dim=360, hidden_size=1024, **kargs):
+    def __init__(self, node_sz, in_channel, out_channel, pos_encoding=None, pos_embed_dim=360, hidden_size=1024, nlayer=1, **kargs):
 
         super().__init__()
         hidden_size = hidden_size
@@ -72,15 +72,18 @@ class BrainNetworkTransformer(BaseModel):
             forward_dim = in_channel + pos_embed_dim
             nn.init.kaiming_normal_(self.node_identity)
 
-        sizes = [out_channel//8, out_channel//8]
-        sizes[0] = node_sz
-        in_sizes = [node_sz] + sizes[:-1]
-        do_pooling = [False, True]
+        # sizes = [out_channel//8, out_channel//8]
+        # # sizes = [out_channel//8 for _ in range(nlayer+1)]
+        # sizes[0] = node_sz
+        # in_sizes = [node_sz] + sizes[:-1]
+        # do_pooling = [False, True]
+        do_pooling = [False for _ in range(nlayer)] + [True]
         self.do_pooling = do_pooling
-        for index, size in enumerate(sizes):
+        # for index, size in enumerate(sizes):
+        for index in range(nlayer+1):
             self.attention_list.append(
                 TransPoolingEncoder(input_feature_size=forward_dim,
-                                    input_node_num=in_sizes[index],
+                                    input_node_num=node_sz,#in_sizes[index],
                                     hidden_size=hidden_size,
                                     output_node_num=node_sz,
                                     pooling=do_pooling[index],

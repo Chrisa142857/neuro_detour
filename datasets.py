@@ -88,7 +88,8 @@ class NeuroNetworkDataset(Dataset):
                 fc_winoverlap = 0,
                 fc_th = 0.5,
                 sc_th = 0.1) -> None:
-        
+        default_fc_th = 0.5
+        default_sc_th = 0.1
         data_root = DATAROOT[dname]
         data_name = DATANAME[dname]
         self.transform = transform
@@ -106,7 +107,10 @@ class NeuroNetworkDataset(Dataset):
         fc_root = f'{self.data_root}/{atlas_name}/FC'
         sc_root = f'{self.data_root}/ALL_SC'
         atlas_name = CORRECT_ATLAS_NAME(atlas_name)
-        data_dir = f'{dname}-{atlas_name}-BOLDwin{fc_winsize}'
+        if self.fc_th == default_fc_th and self.sc_th == default_sc_th:
+            data_dir = f'{dname}-{atlas_name}-BOLDwin{fc_winsize}'
+        else:
+            data_dir = f'{dname}-{atlas_name}-BOLDwin{fc_winsize}-FCth{str(self.fc_th).replace('.', '')}SCth{str(self.sc_th).replace('.', '')}'
         os.makedirs(f'data/{data_dir}', exist_ok=True)
         if not os.path.exists(f'data/{data_dir}/raw.pt'):
             fc_subs = [fn.split('_')[subn_p] for fn in os.listdir(fc_root)]
@@ -229,6 +233,7 @@ class NeuroNetworkDataset(Dataset):
             }
             if self.transform is not None:
                 new_data = self.transform(Data.from_dict(data))
+                # self.cached_data[index] = new_data
                 for key in new_data:
                     data[key] = new_data[key]
                     

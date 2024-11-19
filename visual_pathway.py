@@ -336,48 +336,51 @@ for data in tl:
 #                 multihop_path_dict[key] = []
 #             multihop_path_dict[key].append(multihop_path[key])
 # torch.save(multihop_path_dict, f'resources/{dname}_{atlas}_FC{node_attr}_fold{foldi}_traindata_multiHopPath.pt')
-exit()
-for data in tl:
-    print(data.x.shape, data.y)
-    attn_td, attn_fc = model(data)
-    mat1 = attn_td.detach().numpy()
-    mat2 = attn_fc.detach().numpy()
-    ## Plot attn map
-    fig, axes = plt.subplots(bsz, 1, figsize=(3, bsz*3), sharex=True, sharey=True)
-    for bi in range(bsz):
-        sns.heatmap(mat1[bi].mean(0), ax=axes[bi])
-        axes[bi].set_title(f'label{data.y[bi]}')
-        axes[bi].axis("off")
-    plt.tight_layout()
-    plt.savefig('figs/attnTDavg_map.png')
-    plt.close()
-    fig, axes = plt.subplots(bsz, heads, figsize=(heads*3, bsz*3), sharex=True, sharey=True)
+exit() 
+'''
+Attention maps
+'''
+# for data in tl:
+#     print(data.x.shape, data.y)
+#     attn_td, attn_fc = model(data)
+#     mat1 = attn_td.detach().numpy()
+#     mat2 = attn_fc.detach().numpy()
+#     ## Plot attn map
+#     fig, axes = plt.subplots(bsz, 1, figsize=(3, bsz*3), sharex=True, sharey=True)
+#     for bi in range(bsz):
+#         sns.heatmap(mat1[bi].mean(0), ax=axes[bi])
+#         axes[bi].set_title(f'label{data.y[bi]}')
+#         axes[bi].axis("off")
+#     plt.tight_layout()
+#     plt.savefig('figs/attnTDavg_map.png')
+#     plt.close()
+#     fig, axes = plt.subplots(bsz, heads, figsize=(heads*3, bsz*3), sharex=True, sharey=True)
     
-    for bi in range(bsz):
-        for h in range(heads):
-            sns.heatmap(mat1[bi, h], ax=axes[bi, h])
-            axes[bi, h].set_title(f'label{data.y[bi]} head{h}')
-            axes[bi, h].axis("off")
-    plt.tight_layout()
-    plt.savefig('figs/attnTD_map.png')
-    plt.close()
+#     for bi in range(bsz):
+#         for h in range(heads):
+#             sns.heatmap(mat1[bi, h], ax=axes[bi, h])
+#             axes[bi, h].set_title(f'label{data.y[bi]} head{h}')
+#             axes[bi, h].axis("off")
+#     plt.tight_layout()
+#     plt.savefig('figs/attnTD_map.png')
+#     plt.close()
 
-    fig, axes = plt.subplots(bsz, 1, figsize=(3, bsz*3), sharex=True, sharey=True)
-    for bi in range(bsz):
-        sns.heatmap(mat2[bi].mean(0), ax=axes[bi])
-        axes[bi].set_title(f'label{data.y[bi]}')
-        axes[bi].axis("off")
-    plt.tight_layout()
-    plt.savefig('figs/attnFCavg_map.png')
-    plt.close()
-    fig, axes = plt.subplots(bsz, heads, figsize=(heads*3, bsz*3), sharex=True, sharey=True)
-    for bi in range(bsz):
-        for h in range(heads):
-            sns.heatmap(mat2[bi, h], ax=axes[bi, h])
-            axes[bi, h].set_title(f'label{data.y[bi]} head{h}')
-            axes[bi, h].axis("off")
-    plt.tight_layout()
-    plt.savefig('figs/attnFC_map.png')
-    plt.close()
-    print(attn_td.shape, attn_fc.shape)
-    exit()
+#     fig, axes = plt.subplots(bsz, 1, figsize=(3, bsz*3), sharex=True, sharey=True)
+#     for bi in range(bsz):
+#         sns.heatmap(mat2[bi].mean(0), ax=axes[bi])
+#         axes[bi].set_title(f'label{data.y[bi]}')
+#         axes[bi].axis("off")
+#     plt.tight_layout()
+#     plt.savefig('figs/attnFCavg_map.png')
+#     plt.close()
+#     fig, axes = plt.subplots(bsz, heads, figsize=(heads*3, bsz*3), sharex=True, sharey=True)
+#     for bi in range(bsz):
+#         for h in range(heads):
+#             sns.heatmap(mat2[bi, h], ax=axes[bi, h])
+#             axes[bi, h].set_title(f'label{data.y[bi]} head{h}')
+#             axes[bi, h].axis("off")
+#     plt.tight_layout()
+#     plt.savefig('figs/attnFC_map.png')
+#     plt.close()
+#     print(attn_td.shape, attn_fc.shape)
+#     exit()

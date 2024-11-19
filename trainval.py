@@ -86,8 +86,10 @@ def main():
     parser.add_argument('--decay', type=float, default=0,
                         help='Weight decay (default: 0)')
     parser.add_argument('--device', type=str, default = 'cuda:0')
-    # parser.add_argument('--detour_type', type=str, default = 'node')
-    # parser.add_argument('--detour_k', type=int, default = 4)
+    parser.add_argument('--fc_th', type=float, default = 0.5)
+    parser.add_argument('--sc_th', type=float, default = 0.1)
+    parser.add_argument('--only_dataload', action='store_true')
+
     args = parser.parse_args()
     print(args)
     expdate = str(datetime.now())
@@ -121,22 +123,26 @@ def main():
     for i in range(5):
         dataloaders = dataloader_generator(batch_size=args.batch_size, nfold=i, dataset=dataset, 
                                                                  node_attr=args.node_attr, adj_type=args.adj_type, transform=transform, dname=args.dataname, testset=testset,
-                                                                 fc_winsize=args.bold_winsize, atlas_name=args.atlas)
+                                                                 fc_winsize=args.bold_winsize, atlas_name=args.atlas, fc_th=args.fc_th, sc_th=args.sc_th)
+        if args.only_dataload: exit()
         if len(dataloaders) == 3:
             train_loader, val_loader, dataset = dataloaders
         else:
             train_loader, val_loader, dataset, test_loader, testset = dataloaders
         model = MODEL_BANK[args.models](node_sz=node_sz, out_channel=hiddim, in_channel=input_dim, batch_size=args.batch_size, device=device, nlayer=args.nlayer, heads=args.nhead).to(device)
-        print(sum([p.numel() for p in model.parameters()]))
-        exit()
+        # print(sum([p.numel() for p in model.parameters()]))
+        # exit()
         classifier = Classifier(CLASSIFIER_BANK[args.classifier], hiddim, nclass=nclass, node_sz=node_sz if args.models!='braingnn' else braingnn_nodesz(node_sz, model.ratio), aggr=args.classifier_aggr).to(device)
         optimizer = optim.Adam(list(model.parameters()) + list(classifier.parameters()), lr=args.lr, weight_decay=args.decay) 
         # print(optimizer)
         best_f1 = 0
         patience = 0
         for epoch in (pbar := trange(1, args.epochs+1, desc='Epoch')):
+            print(datetime.now(), 'train start')
             train(model, classifier, device, train_loader, optimizer)
+            print(datetime.now(), 'train done, test start')
             acc, prec, rec, f1 = eval(model, classifier, device, val_loader)
+            print(datetime.now(), 'test done')
             pbar.set_description(f'Accuracy: {acc:.6f}, F1 Score: {f1:.6f}, Epoch')
             if f1 >= best_f1:
                 if f1 > best_f1: 

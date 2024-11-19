@@ -51,12 +51,12 @@ class DetourTransformer(nn.Module):
         self.net = nn.ModuleList([torch.nn.TransformerEncoder(
             torch.nn.TransformerEncoderLayer(d_model=in_channel, nhead=heads, dim_feedforward=hiddim, dropout=dropout, batch_first=True),
             num_layers=1,
-            norm=None#nn.LayerNorm(in_channel)
+            norm=None#nn.LayerNorm(in_channel) # None#
         ) for _ in range(nlayer)])
         self.net_fc = nn.ModuleList([torch.nn.TransformerEncoder(
             torch.nn.TransformerEncoderLayer(d_model=in_channel, nhead=heads, dim_feedforward=hiddim, dropout=dropout, batch_first=True),
             num_layers=1,
-            norm=None#nn.LayerNorm(in_channel)
+            norm=None#nn.LayerNorm(in_channel) # None#
         ) for _ in range(nlayer)])
         self.heads = heads
         self.in_channel = in_channel
@@ -64,14 +64,17 @@ class DetourTransformer(nn.Module):
         self.mask_heldout = torch.zeros(batch_size, node_sz, node_sz) - torch.inf
         self.mask_heldout = self.mask_heldout.to(device)
         self.fcsc_loss = nn.MSELoss()
-        # self.loss = 0
+        ###################################
+        self.loss = 0
+        ###################################
 
     def forward(self, data):
-        # self.loss = 0
         node_feature = data.x
         node_feature = self.lin_first(node_feature)
         node_feature = node_feature.view(data.batch.max()+1, len(torch.where(data.batch==0)[0]), self.in_channel)
-        # node_feature_fc = node_feature
+        ###################################
+        node_feature_fc = node_feature
+        ###################################
 
         adj = data.adj_sc
         adj_fc = data.adj_fc
@@ -85,15 +88,21 @@ class DetourTransformer(nn.Module):
             adj = (adj.float() @ org_adj.float()) > 0
             multi_mask.append(mask)
         multi_mask = torch.cat(multi_mask)
-        # mask_fc = self.mask_heldout[:len(adj_fc)]
-        # mask_fc[adj_fc] = 0
-        # mask_fc = mask_fc.repeat(self.heads, 1, 1)
+        # multi_mask = multi_mask==0
+        ### fmask(FC) #################################
+        mask_fc = self.mask_heldout[:len(adj_fc)]
+        mask_fc[adj_fc] = 0
+        mask_fc = mask_fc.repeat(self.heads, 1, 1)
+        # mask_fc = mask_fc==0
+        ###############################################
         for i in range(self.nlayer):
-            node_feature = self.net[i](node_feature, mask=multi_mask)
-        #     node_feature_fc = self.net_fc[i](node_feature_fc, mask=mask_fc)
-        #     self.loss = self.loss + self.fcsc_loss(node_feature_fc, node_feature)
-        # if not self.training:
-        #     node_feature = node_feature_fc
+            node_feature = self.net[i](node_feature, mask=multi_mask) + node_feature
+        ## readout feature ############################
+            node_feature_fc = self.net_fc[i](node_feature_fc, mask=mask_fc)
+            self.loss = self.loss + self.fcsc_loss(node_feature_fc, node_feature)
+        if not self.training:
+            node_feature = node_feature_fc
+        ###############################################
         return self.lin_in(node_feature.reshape(node_feature.shape[0] * node_feature.shape[1], self.in_channel))
 
 

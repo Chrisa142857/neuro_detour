@@ -2,7 +2,7 @@
 from .BolT.bolT import BolT
 import copy
 
-def get_BolT(node_sz, out_channel, in_channel, **kargs):
+def get_BolT(node_sz, out_channel, in_channel, nlayer=4, **kargs):
     
     hyperParams = {
 
@@ -13,11 +13,14 @@ def get_BolT(node_sz, out_channel, in_channel, **kargs):
         "maxLr" : 4e-4,
 
         # FOR BOLT
-        "nOfLayers" : 4,
+        # "nOfLayers" : 4,
+        "nOfLayers" : nlayer,
         "dim" : node_sz,
 
-        "numHeads" : 36,
-        "headDim" : 20,
+        "numHeads" : 8,
+        "headDim" : 5,
+        # "numHeads" : 36,
+        # "headDim" : 20,
 
         "windowSize" : 20,
         "shiftCoeff" : 2.0/5.0,            

@@ -5,9 +5,9 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 
-def init_params(module, n_layers):
+def init_params(module, nlayer):
     if isinstance(module, nn.Linear):
-        module.weight.data.normal_(mean=0.0, std=0.02 / math.sqrt(n_layers))
+        module.weight.data.normal_(mean=0.0, std=0.02 / math.sqrt(nlayer))
         if module.bias is not None:
             module.bias.data.zero_()
     if isinstance(module, nn.Embedding):
@@ -34,8 +34,8 @@ class TransformerModel(nn.Module):
         out_channel, 
         pe_dim=16,
         hops=7,
-        n_layers=6,
-        num_heads=8,
+        nlayer=6,
+        nhead=8,
         hidden_dim=64,
         ffn_dim=64, 
         dropout_rate=0.0,
@@ -49,9 +49,9 @@ class TransformerModel(nn.Module):
         self.input_dim = in_channel
         self.hidden_dim = hidden_dim
         self.ffn_dim = 2 * hidden_dim
-        self.num_heads = num_heads
+        self.nhead = nhead
         
-        self.n_layers = n_layers
+        self.nlayer = nlayer
         # self.n_class = n_class
 
         self.dropout_rate = dropout_rate
@@ -59,8 +59,8 @@ class TransformerModel(nn.Module):
 
         self.att_embeddings_nope = nn.Linear(self.input_dim, self.hidden_dim)
 
-        encoders = [EncoderLayer(self.hidden_dim, self.ffn_dim, self.dropout_rate, self.attention_dropout_rate, self.num_heads)
-                    for _ in range(self.n_layers)]
+        encoders = [EncoderLayer(self.hidden_dim, self.ffn_dim, self.dropout_rate, self.attention_dropout_rate, self.nhead)
+                    for _ in range(self.nlayer)]
         self.layers = nn.ModuleList(encoders)
         self.final_ln = nn.LayerNorm(hidden_dim)
 
@@ -75,7 +75,7 @@ class TransformerModel(nn.Module):
         self.scaling = nn.Parameter(torch.ones(1) * 0.5)
 
 
-        self.apply(lambda module: init_params(module, n_layers=n_layers))
+        self.apply(lambda module: init_params(module, nlayer=nlayer))
 
     def forward(self, data):
         batched_data = data.new_feature
@@ -127,20 +127,20 @@ class FeedForwardNetwork(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, hidden_size, attention_dropout_rate, num_heads):
+    def __init__(self, hidden_size, attention_dropout_rate, nhead):
         super(MultiHeadAttention, self).__init__()
 
-        self.num_heads = num_heads
+        self.nhead = nhead
 
-        self.att_size = att_size = hidden_size // num_heads
+        self.att_size = att_size = hidden_size // nhead
         self.scale = att_size ** -0.5
 
-        self.linear_q = nn.Linear(hidden_size, num_heads * att_size)
-        self.linear_k = nn.Linear(hidden_size, num_heads * att_size)
-        self.linear_v = nn.Linear(hidden_size, num_heads * att_size)
+        self.linear_q = nn.Linear(hidden_size, nhead * att_size)
+        self.linear_k = nn.Linear(hidden_size, nhead * att_size)
+        self.linear_v = nn.Linear(hidden_size, nhead * att_size)
         self.att_dropout = nn.Dropout(attention_dropout_rate)
 
-        self.output_layer = nn.Linear(num_heads * att_size, hidden_size)
+        self.output_layer = nn.Linear(nhead * att_size, hidden_size)
 
     def forward(self, q, k, v, attn_bias=None):
         orig_q_size = q.size()
@@ -150,9 +150,9 @@ class MultiHeadAttention(nn.Module):
         batch_size = q.size(0)
 
         # head_i = Attention(Q(W^Q)_i, K(W^K)_i, V(W^V)_i)
-        q = self.linear_q(q).view(batch_size, -1, self.num_heads, d_k)
-        k = self.linear_k(k).view(batch_size, -1, self.num_heads, d_k)
-        v = self.linear_v(v).view(batch_size, -1, self.num_heads, d_v)
+        q = self.linear_q(q).view(batch_size, -1, self.nhead, d_k)
+        k = self.linear_k(k).view(batch_size, -1, self.nhead, d_k)
+        v = self.linear_v(v).view(batch_size, -1, self.nhead, d_v)
 
         q = q.transpose(1, 2)                  # [b, h, q_len, d_k]
         v = v.transpose(1, 2)                  # [b, h, v_len, d_v]
@@ -170,7 +170,7 @@ class MultiHeadAttention(nn.Module):
         x = x.matmul(v)  # [b, h, q_len, attn]
 
         x = x.transpose(1, 2).contiguous()  # [b, q_len, h, attn]
-        x = x.view(batch_size, -1, self.num_heads * d_v)
+        x = x.view(batch_size, -1, self.nhead * d_v)
 
         x = self.output_layer(x)
 
@@ -179,12 +179,12 @@ class MultiHeadAttention(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, hidden_size, ffn_size, dropout_rate, attention_dropout_rate, num_heads):
+    def __init__(self, hidden_size, ffn_size, dropout_rate, attention_dropout_rate, nhead):
         super(EncoderLayer, self).__init__()
 
         self.self_attention_norm = nn.LayerNorm(hidden_size)
         self.self_attention = MultiHeadAttention(
-            hidden_size, attention_dropout_rate, num_heads)
+            hidden_size, attention_dropout_rate, nhead)
         self.self_attention_dropout = nn.Dropout(dropout_rate)
 
         self.ffn_norm = nn.LayerNorm(hidden_size)
