@@ -1,3 +1,8 @@
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/neuropath-a-neural-pathway-transformer-for/graph-classification-on-adni)](https://paperswithcode.com/sota/graph-classification-on-adni?p=neuropath-a-neural-pathway-transformer-for)
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/neuropath-a-neural-pathway-transformer-for/graph-classification-on-hcp-aging)](https://paperswithcode.com/sota/graph-classification-on-hcp-aging?p=neuropath-a-neural-pathway-transformer-for)
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/neuropath-a-neural-pathway-transformer-for/graph-classification-on-oasis)](https://paperswithcode.com/sota/graph-classification-on-oasis?p=neuropath-a-neural-pathway-transformer-for)
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/neuropath-a-neural-pathway-transformer-for/graph-classification-on-uk-biobank-brain-mri)](https://paperswithcode.com/sota/graph-classification-on-uk-biobank-brain-mri?p=neuropath-a-neural-pathway-transformer-for)
+
 # File explanition
 
 `trainval.py` is the main function of the 5-fold cross validation classification experiments. 

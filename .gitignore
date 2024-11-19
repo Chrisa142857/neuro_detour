@@ -11,3 +11,5 @@ results_in_markdown.md
 *.svg
 *.ipynb
 rebuttal_results_in_markdown.md
+mdTable2LatexTable.py
+parse_log_to_md_table.py
