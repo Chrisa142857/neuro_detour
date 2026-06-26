@@ -57,3 +57,30 @@ With the new counter and **SC kept sparse (avg degree ~8, i.e. a sensible `sc_th
 makes cost linear in N. The binding constraint is **SC density, not node count** —
 keep SC sparse (or stack a C/igraph backend + FC symmetry) and even the 1000-ROI
 atlas is tractable; leave SC dense and k=8 is impossible at any resolution.
+
+## Dense-SC regime: color-coding (`detour_colorcoding.py`)
+
+The DFS counter is exact but **output-sensitive** — its cost scales with the number
+of simple paths, which is what explodes when SC is dense. **Color-coding**
+(Alon–Yuster–Zwick) removes that dependency: randomly K-color the nodes, count
+*colorful* walks (distinct colors ⇒ simple path) by a layered DP over
+(color-subset, vertex), and divide by the colorful probability for an unbiased
+estimate. Cost is `O(trials · 2^K · N · E)` with `K = k+1` — **polynomial in graph
+size, FPT in k (2^K), and independent of the path count.**
+
+Accuracy (vs exact DFS, unbiased; improves with `trials`): aggregate detour totals
+within ~1–5%, per-edge ~4–16% at 40–80 trials. The DE feature is max/mean/min/std
+*pooled*, so the aggregate accuracy is what matters.
+
+Runtime is **flat in SC density** — the whole point (N=333, k=8, 20 trials):
+
+| SC avg degree | color-coding s/subj | 50k → core-h | exact DFS here |
+|---|---|---|---|
+| 8  | 34.7 | 481 | ~10 min/subj |
+| 16 | 32.1 | 446 | **intractable** |
+| 32 | 31.0 | 431 | **intractable** |
+
+So at k=8: **DFS wins when SC is sparse and low-k; color-coding wins decisively for
+dense SC and/or large k**, where it turns an intractable job into ~32 s/subject
+(≈ 7 h for all 50k on 64 cores) at any density. Practical rule: route sparse-SC /
+low-k subjects to the exact DFS counter, dense-SC / high-k to color-coding.
