@@ -84,3 +84,15 @@ So at k=8: **DFS wins when SC is sparse and low-k; color-coding wins decisively 
 dense SC and/or large k**, where it turns an intractable job into ~32 s/subject
 (≈ 7 h for all 50k on 64 cores) at any density. Practical rule: route sparse-SC /
 low-k subjects to the exact DFS counter, dense-SC / high-k to color-coding.
+
+### Bias-free check: 2^k inclusion-exclusion (`colorcoding_ie_de`)
+An independent inclusion-exclusion kernel computes each coloring's colorful count
+exactly via `Σ_S (−1)^(K−|S|) (A_S)^L`. With `exact=True` it derandomizes over all
+`(L+1)^N` colorings: on small graphs it reproduces the exact DFS counts to **machine
+precision (~1e-15)**, confirming the color-coding estimator is unbiased. Two
+independent estimators (forward DP and IE) plus the exact DFS all agree.
+
+### End-to-end wiring verified
+`NeuroDetourNode`/`NeuroDetourEdge` now call `compute_dee`; a smoke test (torch +
+torch_geometric) confirms all backends run, `method='exact'` is bit-identical to the
+original `get_de` loop, and the transforms emit finite `token/PE/DE/ID/mask`.

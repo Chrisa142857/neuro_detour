@@ -41,7 +41,9 @@ def compute_dee(edge_index_fc, edge_index_sc, k, num_nodes,
     aligned with the columns of edge_index_fc -- a drop-in for the de_list loop.
 
       method='exact'  -> per-source DFS counter (detour_count.all_de), bit-exact.
-      method='color'  -> color-coding estimate (detour_colorcoding), density-independent.
+      method='color'  -> color-coding estimate via forward DP (density-independent).
+      method='ie'     -> color-coding estimate via 2^k inclusion-exclusion (matrix
+                         powers; same unbiased estimate, alternative kernel).
       method='auto'   -> exact while estimated paths/source <= path_budget, else color.
 
     Exact and the original nx-based get_de produce identical output; 'auto' only
@@ -59,11 +61,14 @@ def compute_dee(edge_index_fc, edge_index_sc, k, num_nodes,
         method = 'exact' if estimate_paths_per_source(avg_deg, k) <= path_budget else 'color'
     if method == 'exact':
         dee = all_de(ei_fc, ei_sc, k, num_nodes)
-    else:
-        from detour_colorcoding import colorcoding_de
+    elif method in ('color', 'ie'):
+        from detour_colorcoding import colorcoding_de, colorcoding_ie_de
         A = dense_adj(ei_sc, num_nodes)
-        est = colorcoding_de(A, k, trials=trials, seed=seed)
+        fn = colorcoding_de if method == 'color' else colorcoding_ie_de
+        est = fn(A, k, trials=trials, seed=seed)
         dee = est[ei_fc[0], ei_fc[1]]
+    else:
+        raise ValueError(f"unknown method {method!r}")
     return _torch.from_numpy(_np.ascontiguousarray(dee)).float()
 
 

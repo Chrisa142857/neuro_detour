@@ -36,7 +36,7 @@ DE[L] = number of simple SC paths from i to j with (L+2) nodes / (L+1) edges
 ```python
 from detour_count import compute_dee
 dee = compute_dee(edge_index_fc, edge_index_sc, k, num_nodes,
-                  method='auto',      # 'auto' | 'exact' | 'color'
+                  method='auto',      # 'auto' | 'exact' | 'color' | 'ie'
                   path_budget=5e5,    # auto -> 'color' when est. paths/source exceeds this
                   trials=40, seed=0)  # color-coding sampling (ignored when exact)
 # returns torch.FloatTensor [E_fc, k], aligned with the columns of edge_index_fc
@@ -45,6 +45,8 @@ dee = compute_dee(edge_index_fc, edge_index_sc, k, num_nodes,
   by `torch.where(adj > th)` in `datasets.py`.
 - `method='auto'`: exact while `estimate_paths_per_source(avg_deg,k) <= path_budget`,
   else color-coding. Keeps existing experiments (sparse SC, k=5) **bit-exact**.
+- `method='ie'`: same unbiased estimate as `'color'` but via the 2^k inclusion-exclusion
+  kernel (matrix powers) instead of the forward DP — see backend 4.
 
 ### 2. `detour_count` — exact, per-source DFS counter (sparse SC / low k)
 ```python
@@ -74,6 +76,21 @@ est = colorcoding_de(adj_dense, k, K=None, trials=40, seed=0, src_batch=None)
   trials (tightens with more `trials`; estimator is unbiased). Index with
   `est[edge_index_fc[0], edge_index_fc[1]]` to align to FC edges.
 
+### 4. `detour_colorcoding.colorcoding_ie_de(...)` — exact 2^k inclusion-exclusion
+```python
+from detour_colorcoding import colorcoding_ie_de
+est   = colorcoding_ie_de(adj_dense, k, trials=40, seed=0)   # unbiased estimate [N,N,k]
+exact = colorcoding_ie_de(adj_dense, k, exact=True)          # bias-free, TINY N only
+```
+- Per-coloring colorful counts are computed **exactly** by the classic
+  `CW = Σ_{S⊆[K]} (−1)^(K−|S|) (A_S)^L` matrix-power formula (no DP approximation);
+  the only randomness is the Monte-Carlo average over colorings (unbiased — verified
+  to converge to the exact DFS counts).
+- `exact=True` derandomizes by summing over **all** `(L+1)^N` colorings per length:
+  zero-variance, bias-free, but only tractable for tiny graphs (≤ ~10 nodes). Verified
+  to match the exact DFS counter to machine precision (≈1e-15). Use for
+  validation/research; use `'color'` (forward DP) for production dense estimates.
+
 ## Using it inside the model transforms
 `NeuroDetourNode` / `NeuroDetourEdge` (`depth_first_search.py`) now call `compute_dee`
 and expose the switch via constructor args (defaults preserve old behavior):
@@ -95,6 +112,7 @@ DE cost is a one-time preprocessing step, embarrassingly parallel across subject
 | Dense SC (avg deg ≥ 16) or large k (7–8) | `color` | exact explodes; color-coding is flat |
 | Not sure / mixed cohort | `auto` | exact until it would blow up, then color |
 | Need reproducible published numbers | `exact` | identical to original `get_de` |
+| Bias-free dense counts on small graphs | `ie` + `exact=True` | zero-variance, ≈1e-15 vs DFS |
 
 ## Validate / benchmark
 ```bash

@@ -116,3 +116,74 @@ def colorcoding_de(adj, k, K=None, trials=40, seed=0, src_batch=None):
         est = acc / trials * inv_p[None, None, :]
         out[srcs] = est
     return out
+
+
+def _colorful_walks_ie(A, color, e):
+    '''
+    Exact (per-coloring) inclusion-exclusion count of COLORFUL walks of length e
+    (e edges, e+1 vertices, K=e+1 colors): CW[s,t] = #simple s->t paths of e edges
+    that use each of the e+1 colors exactly once, under this coloring.
+        CW = sum_{S subseteq [K]} (-1)^(K-|S|) (A_S)^e
+    where A_S keeps only rows/cols of vertices colored in S. A colorful walk visits
+    e+1 distinct colors -> e+1 distinct vertices -> a simple path. O(2^K * e * N^3).
+    '''
+    import numpy as _np
+    N = A.shape[0]
+    K = e + 1
+    CW = _np.zeros((N, N), dtype=_np.float64)
+    for S in range(1, 1 << K):
+        m = _np.zeros(N)
+        for c in range(K):
+            if S & (1 << c):
+                m[color == c] = 1.0
+        if m.sum() == 0:
+            continue
+        AS = (A * m[:, None]) * m[None, :]
+        W = _np.linalg.matrix_power(AS, e)
+        sign = 1.0 if ((K - bin(S).count('1')) % 2 == 0) else -1.0
+        CW += sign * W
+    return CW
+
+
+def colorcoding_ie_de(adj, k, trials=40, seed=0, exact=False):
+    '''
+    Inclusion-exclusion ("2^k IE") counterpart of colorcoding_de. Each coloring's
+    colorful count is computed EXACTLY via matrix powers (no DP approximation);
+    the only stochasticity is the Monte-Carlo average over colorings, which is
+    unbiased. Returns counts[N, N, k], est[s,t,L] aligned to get_de index L.
+
+    exact=True  -> derandomize by summing over ALL (L+1)^N colorings per length L.
+                   Bias-free and zero-variance, but only tractable for tiny N
+                   (<= ~10); intended for validation/research, not production.
+    '''
+    import math
+    import itertools
+    import numpy as _np
+    A = _np.asarray(adj, dtype=_np.float64)
+    N = A.shape[0]
+    out = _np.zeros((N, N, k), dtype=_np.float64)
+
+    for L in range(k):                 # DE index L -> path of L+1 edges? no: idx L = len-2
+        e = L + 1                      # edges for this DE bucket (nodes = e+1 = L+2)
+        K = e + 1
+        if K > N:                      # not enough vertices for a path this long
+            continue
+        prob = math.exp(math.lgamma(K + 1) - K * math.log(K))   # K!/K^K
+        inv_p = 1.0 / prob
+        if exact:
+            assert K ** N <= 5_000_000, 'exact derandomization only for tiny graphs'
+            total = _np.zeros((N, N))
+            ncol = 0
+            for coloring in itertools.product(range(K), repeat=N):
+                total += _colorful_walks_ie(A, _np.array(coloring), e)
+                ncol += 1
+            # average colorful count over colorings, then unbiased rescale
+            out[:, :, L] = (total / ncol) * inv_p
+        else:
+            rng = _np.random.default_rng(seed + L)
+            acc = _np.zeros((N, N))
+            for _ in range(trials):
+                color = rng.integers(0, K, size=N)
+                acc += _colorful_walks_ie(A, color, e)
+            out[:, :, L] = (acc / trials) * inv_p
+    return out
