@@ -16,6 +16,57 @@ path lengths up to `k` edges.
 import numpy as np
 
 
+def dense_adj(edge_index, num_nodes):
+    '''edge_index [2,E] -> symmetric dense {0,1} [N,N] (self-loops dropped).'''
+    import numpy as _np
+    ei = _np.asarray(edge_index)
+    A = _np.zeros((num_nodes, num_nodes), dtype=_np.float64)
+    a, b = ei[0], ei[1]
+    m = a != b
+    A[a[m], b[m]] = 1.0
+    A[b[m], a[m]] = 1.0
+    return A
+
+
+def estimate_paths_per_source(avg_deg, k):
+    '''Rough count of simple paths from one node up to k edges; drives auto switch.'''
+    b = max(avg_deg - 1.0, 1.0)
+    return sum(b ** i for i in range(1, k))
+
+
+def compute_dee(edge_index_fc, edge_index_sc, k, num_nodes,
+                method='auto', path_budget=5e5, trials=40, seed=0):
+    '''
+    Unified structural-detour (DE) backend. Returns a torch.FloatTensor [E_fc, k]
+    aligned with the columns of edge_index_fc -- a drop-in for the de_list loop.
+
+      method='exact'  -> per-source DFS counter (detour_count.all_de), bit-exact.
+      method='color'  -> color-coding estimate (detour_colorcoding), density-independent.
+      method='auto'   -> exact while estimated paths/source <= path_budget, else color.
+
+    Exact and the original nx-based get_de produce identical output; 'auto' only
+    falls back to the (unbiased, approximate) color-coding estimator when exact
+    enumeration would blow up (dense SC and/or large k).
+    '''
+    import numpy as _np
+    import torch as _torch
+    ei_fc = _np.asarray(edge_index_fc)
+    ei_sc = _np.asarray(edge_index_sc)
+    if ei_fc.size == 0 or ei_fc.shape[1] == 0:
+        return _torch.zeros(0, k)
+    avg_deg = ei_sc.shape[1] / max(num_nodes, 1)
+    if method == 'auto':
+        method = 'exact' if estimate_paths_per_source(avg_deg, k) <= path_budget else 'color'
+    if method == 'exact':
+        dee = all_de(ei_fc, ei_sc, k, num_nodes)
+    else:
+        from detour_colorcoding import colorcoding_de
+        A = dense_adj(ei_sc, num_nodes)
+        est = colorcoding_de(A, k, trials=trials, seed=seed)
+        dee = est[ei_fc[0], ei_fc[1]]
+    return _torch.from_numpy(_np.ascontiguousarray(dee)).float()
+
+
 def build_adj(edge_index, num_nodes):
     '''edge_index: LongTensor/ndarray [2, E] (directed, both dirs present). -> list[np.ndarray]'''
     ei = np.asarray(edge_index)
