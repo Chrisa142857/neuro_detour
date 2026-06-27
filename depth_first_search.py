@@ -6,14 +6,20 @@ import networkx as nx
 from torch_geometric.utils import remove_self_loops, add_self_loops
 from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_std
 
+from detour_count import compute_dee
+
 
 
 class NeuroDetourNode:
-    
-    def __init__(self, k=5, node_num=116) -> None:
+
+    def __init__(self, k=5, node_num=116, de_method='auto', de_trials=40,
+                 de_path_budget=5e5) -> None:
         self.PEK = node_num
         self.node_num = node_num
         self.k = k
+        self.de_method = de_method        # 'auto' | 'exact' | 'color'
+        self.de_trials = de_trials        # color-coding samples (ignored when exact)
+        self.de_path_budget = de_path_budget  # auto switches to color above this
         self.node_list = [i for i in range(node_num)]
 
 
@@ -24,13 +30,9 @@ class NeuroDetourNode:
         G1 = nx.Graph()
         G1.add_nodes_from(self.node_list)
         G1.add_edges_from(edge_index1.T.tolist())
-        G2 = nx.Graph()
-        G2.add_nodes_from(self.node_list)
-        G2.add_edges_from(edge_index2.T.tolist())
-        de_list = []
-        for j in range(edge_index1.shape[1]):
-            de_list.append(get_de(G2, edge_index1[0, j].item(), edge_index1[1, j].item(), self.k))
-        dee = torch.FloatTensor(de_list)#[edge, k-1]
+        dee = compute_dee(edge_index1, edge_index2, self.k, self.node_num,
+                          method=self.de_method, trials=self.de_trials,
+                          path_budget=self.de_path_budget)  # [edge, k]
         node_dee = torch.cat([
             scatter_max(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1]))[0],
             scatter_mean(dee, index=edge_index1[0], dim=0, out=torch.zeros(self.node_num, dee.shape[1])),
@@ -52,10 +54,14 @@ class NeuroDetourNode:
         }
     
 class NeuroDetourEdge:
-    def __init__(self, k=5, node_num=116) -> None:
+    def __init__(self, k=5, node_num=116, de_method='auto', de_trials=40,
+                 de_path_budget=5e5) -> None:
         self.k = k
         self.PEK = node_num
         self.node_num = node_num
+        self.de_method = de_method
+        self.de_trials = de_trials
+        self.de_path_budget = de_path_budget
         self.node_list = [i for i in range(node_num)]
 
 
@@ -65,13 +71,9 @@ class NeuroDetourEdge:
         G1 = nx.Graph()
         G1.add_nodes_from(self.node_list)
         G1.add_edges_from(edge_index1.T.tolist())
-        G2 = nx.Graph()
-        G2.add_nodes_from(self.node_list)
-        G2.add_edges_from(edge_index2.T.tolist())
-        de_list = []
-        for j in range(edge_index1.shape[1]):
-            de_list.append(get_de(G2, edge_index1[0, j].item(), edge_index1[1, j].item(), self.k))
-        dee = torch.FloatTensor(de_list)#[:, None]
+        dee = compute_dee(edge_index1, edge_index2, self.k, self.node_num,
+                          method=self.de_method, trials=self.de_trials,
+                          path_budget=self.de_path_budget)  # [edge, k]
         lap = torch.from_numpy(nx.laplacian_matrix(G1).toarray()).float()
         L, V = torch.linalg.eig(lap)
         pe = V[:, :self.PEK].real
